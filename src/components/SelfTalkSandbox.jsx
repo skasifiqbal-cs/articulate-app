@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, RefreshCw, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, Play, Eye, EyeOff, Shuffle } from 'lucide-react';
+import { Mic, MicOff, RefreshCw, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, Play, Eye, EyeOff, AlertCircle, Edit3 } from 'lucide-react';
 import { analyzeSelfTalk, generateAIScenarios } from '../services/ai.js';
 import { markNodeAsActive, addNodeToGraph, getNodes } from '../services/storage.js';
 import confetti from 'canvas-confetti';
@@ -11,6 +11,7 @@ export default function SelfTalkSandbox() {
   const [isGeneratingScenarios, setIsGeneratingScenarios] = useState(false);
   
   const [isRecording, setIsRecording] = useState(false);
+  const [speechError, setSpeechError] = useState('');
   const [transcript, setTranscript] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -24,7 +25,6 @@ export default function SelfTalkSandbox() {
 
   const recognitionRef = useRef(null);
 
-  // Load initial AI scenarios on mount
   useEffect(() => {
     loadScenarios();
 
@@ -34,6 +34,8 @@ export default function SelfTalkSandbox() {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
+    } else {
+      setSpeechError('Browser voice recognition not supported. Use text input below.');
     }
   }, []);
 
@@ -41,7 +43,7 @@ export default function SelfTalkSandbox() {
     setIsGeneratingScenarios(true);
     try {
       const list = await generateAIScenarios();
-      const cappedList = (list || []).slice(0, 5); // At max 5 scenarios!
+      const cappedList = (list || []).slice(0, 5);
       setScenarios(cappedList);
       if (cappedList.length > 0) setSelectedScenario(cappedList[0]);
     } catch (err) {
@@ -52,8 +54,9 @@ export default function SelfTalkSandbox() {
   };
 
   const toggleRecording = () => {
+    setSpeechError('');
     if (!recognitionRef.current) {
-      alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
+      setSpeechError('Speech recognition unavailable. Please type your speech directly into the box below.');
       return;
     }
 
@@ -73,9 +76,25 @@ export default function SelfTalkSandbox() {
         setTranscript(currentText.trim());
       };
 
-      recognitionRef.current.onerror = () => setIsRecording(false);
-      recognitionRef.current.start();
-      setIsRecording(true);
+      recognitionRef.current.onerror = (event) => {
+        console.warn('Speech error:', event.error);
+        setIsRecording(false);
+        if (event.error === 'network') {
+          setSpeechError('Voice network blocked by proxy. Type your text directly into the box below!');
+        } else if (event.error === 'not-allowed') {
+          setSpeechError('Microphone permission denied. Allow mic access or type text below.');
+        } else {
+          setSpeechError(`Speech error (${event.error}). Type text directly below!`);
+        }
+      };
+
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (err) {
+        setIsRecording(false);
+        setSpeechError('Voice engine busy. Type text directly below!');
+      }
     }
   };
 
@@ -99,26 +118,15 @@ export default function SelfTalkSandbox() {
   };
 
   const toggleRetryRecording = () => {
-    if (!recognitionRef.current) return;
+    if (!recognitionRef.current) {
+      evaluateRetryManual();
+      return;
+    }
 
     if (isRetryRecording) {
       recognitionRef.current.stop();
       setIsRetryRecording(false);
-
-      if (analysisResult?.upgrades) {
-        const spokenLower = retryTranscript.toLowerCase();
-        let matched = false;
-        analysisResult.upgrades.forEach(u => {
-          if (spokenLower.includes(u.targetWord.toLowerCase())) {
-            matched = true;
-            markNodeAsActive(u.targetWord);
-          }
-        });
-        if (matched || spokenLower.length > 10) {
-          setRetrySuccess(true);
-          confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
-        }
-      }
+      evaluateRetryText(retryTranscript);
     } else {
       setRetryTranscript('');
       setRetrySuccess(false);
@@ -131,8 +139,41 @@ export default function SelfTalkSandbox() {
         setRetryTranscript(currentText.trim());
       };
 
-      recognitionRef.current.start();
-      setIsRetryRecording(true);
+      recognitionRef.current.onerror = () => {
+        setIsRetryRecording(false);
+      };
+
+      try {
+        recognitionRef.current.start();
+        setIsRetryRecording(true);
+      } catch (err) {
+        setIsRetryRecording(false);
+      }
+    }
+  };
+
+  const evaluateRetryText = (text) => {
+    if (analysisResult?.upgrades) {
+      const spokenLower = text.toLowerCase();
+      let matched = false;
+      analysisResult.upgrades.forEach(u => {
+        if (spokenLower.includes(u.targetWord.toLowerCase())) {
+          matched = true;
+          markNodeAsActive(u.targetWord);
+        }
+      });
+      if (matched || spokenLower.length > 5) {
+        setRetrySuccess(true);
+        confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+      }
+    }
+  };
+
+  const evaluateRetryManual = () => {
+    if (analysisResult?.upgrades) {
+      analysisResult.upgrades.forEach(u => markNodeAsActive(u.targetWord));
+      setRetrySuccess(true);
+      confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
     }
   };
 
@@ -142,53 +183,43 @@ export default function SelfTalkSandbox() {
       {/* Mobile Stacked Grid */}
       <div className="mobile-stack" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '1.25rem' }}>
         
-        {/* Scenario List (Capped at 5 Scenarios) */}
+        {/* Scenario List */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
             <h3 style={{ fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Sparkles size={15} color="var(--accent-purple)" /> AI Daily Scenarios (Max 5)
+              <Sparkles size={15} color="var(--accent-purple)" /> AI Scenarios (Max 5)
             </h3>
             <button
               onClick={loadScenarios}
               disabled={isGeneratingScenarios}
               className="btn btn-secondary"
               style={{ padding: '0.2rem 0.5rem', minHeight: '30px', fontSize: '0.72rem', color: 'var(--accent-purple)' }}
-              title="Generate 5 fresh AI scenarios"
             >
-              <RefreshCw size={12} className={isGeneratingScenarios ? 'animate-spin' : ''} /> Refresh 5 Scenarios
+              <RefreshCw size={12} className={isGeneratingScenarios ? 'animate-spin' : ''} /> Refresh Scenarios
             </button>
           </div>
 
-          {isGeneratingScenarios ? (
-            <div className="glass-card" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
-              <RefreshCw size={20} className="animate-spin" color="var(--accent-purple)" style={{ marginBottom: '0.5rem' }} />
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-                AI is analyzing your deep lexicon graph and engineering 5 targeted scenarios...
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1rem' }}>
-              {scenarios.map((sc, idx) => (
-                <div
-                  key={sc.id || idx}
-                  onClick={() => { setSelectedScenario(sc); setCustomPrompt(''); }}
-                  className="glass-card"
-                  style={{
-                    cursor: 'pointer',
-                    borderColor: selectedScenario?.id === sc.id && !customPrompt ? 'var(--accent-purple)' : 'rgba(255, 255, 255, 0.08)',
-                    background: selectedScenario?.id === sc.id && !customPrompt ? 'rgba(139, 92, 246, 0.18)' : 'rgba(30, 41, 59, 0.45)',
-                    padding: '0.85rem'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', color: '#ffffff' }}>{sc.title}</h4>
-                    <span className="badge badge-purple" style={{ fontSize: '0.62rem' }}>{sc.category}</span>
-                  </div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>{sc.prompt}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1rem' }}>
+            {scenarios.map((sc, idx) => (
+              <div
+                key={sc.id || idx}
+                onClick={() => { setSelectedScenario(sc); setCustomPrompt(''); }}
+                className="glass-card"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: selectedScenario?.id === sc.id && !customPrompt ? 'var(--accent-purple)' : 'rgba(255, 255, 255, 0.08)',
+                  background: selectedScenario?.id === sc.id && !customPrompt ? 'rgba(139, 92, 246, 0.18)' : 'rgba(30, 41, 59, 0.45)',
+                  padding: '0.85rem'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <h4 style={{ fontSize: '0.85rem', color: '#ffffff' }}>{sc.title}</h4>
+                  <span className="badge badge-purple" style={{ fontSize: '0.62rem' }}>{sc.category}</span>
                 </div>
-              ))}
-            </div>
-          )}
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>{sc.prompt}</p>
+              </div>
+            ))}
+          </div>
 
           {/* Custom Topic Input */}
           <div className="glass-card">
@@ -197,7 +228,7 @@ export default function SelfTalkSandbox() {
             </label>
             <textarea
               rows={2}
-              placeholder="e.g. Explaining why I want to learn French..."
+              placeholder="e.g. Explaining a project timeline to my team..."
               value={customPrompt}
               onChange={(e) => setCustomPrompt(e.target.value)}
               style={{
@@ -226,6 +257,16 @@ export default function SelfTalkSandbox() {
             </p>
           </div>
 
+          {/* Diagnostic Error Banner if mic/proxy fails */}
+          {speechError && (
+            <div className="glass-card" style={{ marginBottom: '1rem', borderColor: 'var(--accent-rose)', background: 'rgba(244, 63, 94, 0.12)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <AlertCircle size={16} color="var(--accent-rose)" />
+                <span style={{ fontSize: '0.82rem', color: '#ffffff' }}>{speechError}</span>
+              </div>
+            </div>
+          )}
+
           {/* Recording & Mic Button */}
           <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.25rem', textAlign: 'center' }}>
             
@@ -247,7 +288,7 @@ export default function SelfTalkSandbox() {
               
               <div>
                 <p style={{ fontWeight: 700, fontSize: '1rem', margin: 0, color: isRecording ? 'var(--accent-rose)' : '#ffffff' }}>
-                  {isRecording ? '● Recording... Speak Naturally' : (transcript ? 'Recording Captured!' : 'Tap Mic & Start Speaking')}
+                  {isRecording ? '● Recording... Speak Naturally' : (transcript ? 'Speech Captured!' : 'Tap Mic OR Type Below')}
                 </p>
               </div>
             </div>
@@ -256,7 +297,7 @@ export default function SelfTalkSandbox() {
               rows={3}
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}
-              placeholder="Your spoken words appear here automatically..."
+              placeholder="Type or speak your thoughts naturally here (e.g. 'The meeting was very long and we had a big problem')..."
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -331,7 +372,7 @@ export default function SelfTalkSandbox() {
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-cyan)', textTransform: 'uppercase', display: 'block', marginBottom: '0.35rem' }}>
-                  Cue Words to Speak:
+                  Cue Words to Speak / Type:
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                   {analysisResult?.upgrades?.map((upg, i) => (
@@ -342,17 +383,23 @@ export default function SelfTalkSandbox() {
                 </div>
               </div>
 
-              <div style={{ textAlign: 'center' }}>
-                <button
-                  onClick={toggleRetryRecording}
-                  className={`btn ${isRetryRecording ? 'btn-pulse' : 'btn-emerald'}`}
-                  style={{ width: '64px', height: '64px', borderRadius: '50%', padding: 0 }}
-                >
-                  {isRetryRecording ? <MicOff size={28} color="#ffffff" /> : <Mic size={28} color="#ffffff" />}
+              <div style={{ marginBottom: '1rem' }}>
+                <textarea
+                  rows={2}
+                  value={retryTranscript}
+                  onChange={(e) => setRetryTranscript(e.target.value)}
+                  placeholder="Re-type or re-speak your sentence incorporating the cue words..."
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', background: 'rgba(15,23,42,0.8)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={toggleRetryRecording} className={`btn ${isRetryRecording ? 'btn-pulse' : 'btn-emerald'}`} style={{ flex: 1 }}>
+                  {isRetryRecording ? <MicOff size={16} /> : <Mic size={16} />} Record Retry
                 </button>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                  {isRetryRecording ? 'Listening...' : 'Tap Mic & re-speak using cue words!'}
-                </p>
+                <button onClick={() => evaluateRetryText(retryTranscript)} className="btn btn-primary" style={{ flex: 1 }}>
+                  <CheckCircle2 size={16} /> Verify Retry
+                </button>
               </div>
 
               {retrySuccess && (
