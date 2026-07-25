@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Key, Cpu, Zap, Check, ExternalLink, Globe, Download, Upload, RefreshCw } from 'lucide-react';
-import { getSettings, saveSettings, getProfile, saveProfile, exportBackupData, importBackupData } from '../services/storage.js';
+import { X, Key, Cpu, Zap, Check, Globe, RefreshCw, Cloud, Lock } from 'lucide-react';
+import { getSettings, saveSettings, getProfile, saveProfile, fetchAutoCloudSync, triggerAutoCloudSync } from '../services/storage.js';
 
 export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
   if (!isOpen) return null;
@@ -8,15 +8,20 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
   const [settings, setSettings] = useState(getSettings());
   const [profile, setProfile] = useState(getProfile());
   const [savedSuccess, setSavedSuccess] = useState(false);
-
-  // Sync state
-  const [syncJson, setSyncJson] = useState('');
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [syncStatus, setSyncStatus] = useState('');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     saveSettings(settings);
     saveProfile(profile);
     setSavedSuccess(true);
+    
+    if (settings.syncCode) {
+      setIsSyncingCloud(true);
+      await triggerAutoCloudSync();
+      setIsSyncingCloud(false);
+    }
+
     setTimeout(() => {
       setSavedSuccess(false);
       onSettingsUpdated();
@@ -24,25 +29,22 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
     }, 600);
   };
 
-  const handleExport = () => {
-    const data = exportBackupData();
-    setSyncJson(data);
-    navigator.clipboard.writeText(data);
-    setSyncStatus('Copied backup payload to clipboard!');
-    setTimeout(() => setSyncStatus(''), 3000);
-  };
-
-  const handleImport = () => {
-    if (!syncJson.trim()) return;
-    const success = importBackupData(syncJson);
+  const handlePullCloud = async () => {
+    if (!settings.syncCode) {
+      setSyncStatus('Enter a personal sync PIN code first.');
+      return;
+    }
+    setIsSyncingCloud(true);
+    const success = await fetchAutoCloudSync();
+    setIsSyncingCloud(false);
     if (success) {
-      setSyncStatus('✅ Lexicon graph & data synced successfully!');
+      setSyncStatus('✅ Lexicon graph auto-synced from cloud!');
       setTimeout(() => {
         setSyncStatus('');
         onSettingsUpdated();
-      }, 1500);
+      }, 1200);
     } else {
-      setSyncStatus('❌ Invalid JSON payload format.');
+      setSyncStatus('❌ Sync PIN not found on cloud vault yet.');
     }
   };
 
@@ -80,11 +82,39 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
             <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(139, 92, 246, 0.2)', color: 'var(--accent-purple)' }}>
               <Zap size={20} />
             </div>
-            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>AI Engine & Sync Settings</h2>
+            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>AI Engine & Cloud Sync</h2>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={20} />
           </button>
+        </div>
+
+        {/* ☁️ AUTOMATIC CLOUD SYNC PIN BOX */}
+        <div className="glass-card" style={{ marginBottom: '1.25rem', borderColor: 'var(--accent-purple)', background: 'rgba(139, 92, 246, 0.12)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, fontSize: '0.88rem', color: '#ffffff', marginBottom: '0.35rem' }}>
+            <Cloud size={16} color="var(--accent-purple)" /> Automatic PC ↔ Phone Cloud Sync PIN
+          </label>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 0.65rem 0' }}>
+            Type any secret PIN (e.g. <code>my-lexicon</code>). PC & Phone using this PIN will auto-sync words automatically with zero copy-pasting!
+          </p>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Lock size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Enter secret PIN (e.g. my-lexicon)"
+                value={settings.syncCode}
+                onChange={(e) => setSettings({ ...settings, syncCode: e.target.value })}
+                style={{ width: '100%', padding: '0.55rem 0.5rem 0.55rem 2.2rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem', fontFamily: 'monospace' }}
+              />
+            </div>
+
+            <button type="button" onClick={handlePullCloud} disabled={isSyncingCloud} className="btn btn-emerald" style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem' }}>
+              {isSyncingCloud ? <RefreshCw size={14} className="animate-spin" /> : <><Cloud size={14} /> Sync Now</>}
+            </button>
+          </div>
+          {syncStatus && <p style={{ fontSize: '0.78rem', color: 'var(--accent-emerald)', fontWeight: 600, margin: '0.2rem 0 0 0' }}>{syncStatus}</p>}
         </div>
 
         {/* Target Profile */}
@@ -98,20 +128,10 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
               const selected = languageProfiles.find(p => p.code === e.target.value);
               if (selected) setProfile(selected);
             }}
-            style={{
-              width: '100%',
-              padding: '0.6rem',
-              borderRadius: 'var(--radius-md)',
-              background: 'rgba(15, 23, 42, 0.8)',
-              border: '1px solid var(--border-color)',
-              color: '#ffffff',
-              fontSize: '0.85rem'
-            }}
+            style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.8)', border: '1px solid var(--border-color)', color: '#ffffff', fontSize: '0.85rem' }}
           >
             {languageProfiles.map(p => (
-              <option key={p.code} value={p.code}>
-                {p.name} — {p.level}
-              </option>
+              <option key={p.code} value={p.code}>{p.name} — {p.level}</option>
             ))}
           </select>
         </div>
@@ -122,55 +142,19 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
             AI Engine Provider
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
-            <button
-              type="button"
-              onClick={() => setSettings({ ...settings, provider: 'gemini' })}
-              style={{
-                padding: '0.65rem 0.4rem',
-                borderRadius: 'var(--radius-md)',
-                border: settings.provider === 'gemini' ? '2px solid var(--accent-purple)' : '1px solid var(--border-color)',
-                background: settings.provider === 'gemini' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '0.8rem'
-              }}
-            >
+            <button type="button" onClick={() => setSettings({ ...settings, provider: 'gemini' })} className={`btn ${settings.provider === 'gemini' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.55rem 0.3rem', fontSize: '0.78rem' }}>
               Gemini Cloud
             </button>
-            <button
-              type="button"
-              onClick={() => setSettings({ ...settings, provider: 'ollama' })}
-              style={{
-                padding: '0.65rem 0.4rem',
-                borderRadius: 'var(--radius-md)',
-                border: settings.provider === 'ollama' ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)',
-                background: settings.provider === 'ollama' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '0.8rem'
-              }}
-            >
+            <button type="button" onClick={() => setSettings({ ...settings, provider: 'ollama' })} className={`btn ${settings.provider === 'ollama' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.55rem 0.3rem', fontSize: '0.78rem' }}>
               Local Ollama
             </button>
-            <button
-              type="button"
-              onClick={() => setSettings({ ...settings, provider: 'mock' })}
-              style={{
-                padding: '0.65rem 0.4rem',
-                borderRadius: 'var(--radius-md)',
-                border: settings.provider === 'mock' ? '2px solid var(--accent-amber)' : '1px solid var(--border-color)',
-                background: settings.provider === 'mock' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '0.8rem'
-              }}
-            >
+            <button type="button" onClick={() => setSettings({ ...settings, provider: 'mock' })} className={`btn ${settings.provider === 'mock' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.55rem 0.3rem', fontSize: '0.78rem' }}>
               Offline Mock
             </button>
           </div>
         </div>
 
-        {/* Provider Specific Inputs */}
+        {/* Gemini Key Input */}
         {settings.provider === 'gemini' && (
           <div className="glass-card" style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.82rem', marginBottom: '0.35rem' }}>
@@ -186,39 +170,11 @@ export default function SettingsModal({ isOpen, onClose, onSettingsUpdated }) {
           </div>
         )}
 
-        {/* Cross-Device Sync & Backup */}
-        <div className="glass-card" style={{ marginBottom: '1.25rem', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--accent-emerald)' }}>
-            <RefreshCw size={15} /> PC ↔ Phone Cross-Device Sync
-          </label>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 0.65rem 0' }}>
-            Export your PC vocabulary graph to sync onto your phone, or paste phone backups here.
-          </p>
-
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.65rem' }}>
-            <button type="button" onClick={handleExport} className="btn btn-emerald" style={{ flex: 1, padding: '0.45rem', fontSize: '0.78rem' }}>
-              <Download size={14} /> Export & Copy Backup
-            </button>
-            <button type="button" onClick={handleImport} className="btn btn-secondary" style={{ flex: 1, padding: '0.45rem', fontSize: '0.78rem' }}>
-              <Upload size={14} /> Import Backup
-            </button>
-          </div>
-
-          <textarea
-            rows={3}
-            placeholder="Paste exported backup JSON here to sync..."
-            value={syncJson}
-            onChange={(e) => setSyncJson(e.target.value)}
-            style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.75rem', fontFamily: 'monospace', resize: 'none' }}
-          />
-          {syncStatus && <p style={{ fontSize: '0.78rem', color: 'var(--accent-emerald)', marginTop: '0.35rem', fontWeight: 600, margin: '0.35rem 0 0 0' }}>{syncStatus}</p>}
-        </div>
-
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
           <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
           <button type="button" onClick={handleSave} className="btn btn-primary">
-            {savedSuccess ? <><Check size={16} /> Saved!</> : 'Save Settings'}
+            {savedSuccess ? <><Check size={16} /> Saved & Synced!</> : 'Save Settings'}
           </button>
         </div>
 

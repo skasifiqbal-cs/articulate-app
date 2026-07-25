@@ -4,7 +4,8 @@ const STORAGE_KEYS = {
   SETTINGS: 'articulate_settings_v1',
   PROFILE: 'articulate_profile_v1',
   NODES: 'articulate_nodes_v1',
-  EDGES: 'articulate_edges_v1'
+  EDGES: 'articulate_edges_v1',
+  SYNC_CODE: 'articulate_sync_code_v1'
 };
 
 export const getSettings = () => {
@@ -15,7 +16,8 @@ export const getSettings = () => {
     ollamaEndpoint: 'http://localhost:11434',
     ollamaModel: 'gemma2:2b',
     ttsRate: 1.0,
-    ttsPitch: 1.0
+    ttsPitch: 1.0,
+    syncCode: '' // Personal Sync PIN for automatic cloud sync
   };
 };
 
@@ -43,6 +45,7 @@ export const getNodes = () => {
 
 export const saveNodes = (nodes) => {
   localStorage.setItem(STORAGE_KEYS.NODES, JSON.stringify(nodes));
+  triggerAutoCloudSync();
 };
 
 export const getEdges = () => {
@@ -52,6 +55,7 @@ export const getEdges = () => {
 
 export const saveEdges = (edges) => {
   localStorage.setItem(STORAGE_KEYS.EDGES, JSON.stringify(edges));
+  triggerAutoCloudSync();
 };
 
 export const addNodeToGraph = (word, definition = '', category = 'passive', collocation = '', baseSynonym = '') => {
@@ -90,7 +94,6 @@ export const addNodeToGraph = (word, definition = '', category = 'passive', coll
   return newNode;
 };
 
-// Node Modification Functions
 export const markNodeAsActive = (wordLabel) => {
   updateNodeCategory(wordLabel, 'active');
 };
@@ -99,7 +102,7 @@ export const updateNodeCategory = (wordLabel, newCategory) => {
   const nodes = getNodes();
   const node = nodes.find(n => n.label.toLowerCase() === wordLabel.toLowerCase() || n.id === wordLabel);
   if (node) {
-    node.category = newCategory; // 'active' | 'passive' | 'anchor'
+    node.category = newCategory;
     node.color = newCategory === 'active' ? '#10b981' : (newCategory === 'passive' ? '#f97316' : '#3b82f6');
     saveNodes(nodes);
   }
@@ -125,8 +128,48 @@ export const editNodeInGraph = (nodeId, updatedFields) => {
 };
 
 /* =========================================================================
-   CROSS-DEVICE SYNC
+   ZERO-TOUCH AUTOMATIC CLOUD SYNC ENGINE (PC <-> Phone)
    ========================================================================= */
+
+export const triggerAutoCloudSync = async () => {
+  const settings = getSettings();
+  if (!settings.syncCode) return;
+
+  const payload = {
+    nodes: getNodes(),
+    edges: getEdges(),
+    profile: getProfile(),
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    await fetch(`https://kvdb.io/4y9UqWj5C5S8pY9N7m4q/${settings.syncCode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    console.warn('Auto cloud sync backup skipped (offline or network proxy):', err);
+  }
+};
+
+export const fetchAutoCloudSync = async () => {
+  const settings = getSettings();
+  if (!settings.syncCode) return false;
+
+  try {
+    const res = await fetch(`https://kvdb.io/4y9UqWj5C5S8pY9N7m4q/${settings.syncCode}`);
+    if (!res.ok) return false;
+    const payload = await res.json();
+    if (payload.nodes && Array.isArray(payload.nodes)) saveNodes(payload.nodes);
+    if (payload.edges && Array.isArray(payload.edges)) saveEdges(payload.edges);
+    if (payload.profile) saveProfile(payload.profile);
+    return true;
+  } catch (err) {
+    console.warn('Auto cloud sync fetch failed:', err);
+    return false;
+  }
+};
 
 export const exportBackupData = () => {
   const payload = {
