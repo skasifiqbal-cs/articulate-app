@@ -55,21 +55,63 @@ export async function guessTabooWord(explanationText, targetWord, forbiddenWords
 }
 
 /* =========================================================================
-   1. GEMINI SCENARIO GENERATION
+   1. GEMINI CLOUD API INTEGRATION (Gemini 1.5 Flash)
    ========================================================================= */
 
+async function analyzeWithGemini(transcript, scenarioPrompt, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  
+  const systemPrompt = `You are a speech eloquence and native collocation coach.
+Analyze transcript: "${transcript}" in context of prompt: "${scenarioPrompt}".
+Identify basic crutch words and output ONLY JSON in this structure:
+{
+  "crutchesFound": ["very big"],
+  "upgrades": [
+    {
+      "crutch": "very big",
+      "targetWord": "Colossal",
+      "collocation": "a colossal mistake",
+      "definition": "Extremely large or immense in scale."
+    }
+  ],
+  "polishedSentence": "A native, highly eloquent version of the sentence."
+}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+    });
+    
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gemini API HTTP Error ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanJson);
+  } catch (err) {
+    console.error('Gemini API Error:', err);
+    alert(`Gemini API Call Failed: ${err.message}. Falling back to Mock Mode.`);
+    return analyzeWithMock(transcript, scenarioPrompt);
+  }
+}
+
 async function generateScenariosWithGemini(targetWords, apiKey) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  const prompt = `Act as an executive speech coach. Look at the user's passive target words: [${targetWords.join(', ')}].
-Generate EXACTLY 5 high-yield, realistic, distinct self-talk scenarios designed to pull out these specific target words.
-Respond STRICTLY in JSON format with no markdown wrappers:
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  const prompt = `You are an executive speech coach. Target passive words: [${targetWords.join(', ')}].
+Generate EXACTLY 5 distinct, highly realistic self-talk scenarios designed to pull out these specific target words.
+Output STRICTLY JSON:
 {
   "scenarios": [
     {
       "id": "gen_1",
       "title": "Scenario Title",
-      "category": "Work / Debate / Personal",
-      "prompt": "Detailed real-world situation prompt...",
+      "category": "Work / Persuasion / Personal",
+      "prompt": "Real world scenario prompt...",
       "targetWords": ["word1", "word2"]
     }
   ]
@@ -81,13 +123,90 @@ Respond STRICTLY in JSON format with no markdown wrappers:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gemini API HTTP Error ${res.status}: ${errText}`);
+    }
+
     const data = await res.json();
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
-    return parsed.scenarios.slice(0, 5);
+    return (parsed.scenarios || []).slice(0, 5);
   } catch (err) {
+    console.error('Gemini API Error:', err);
     return generateScenariosWithMock(targetWords);
+  }
+}
+
+async function reverseSearchWithGemini(conceptQuery, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  const prompt = `Act as Reverse Dictionary for concept: "${conceptQuery}". Output STRICTLY JSON:
+{
+  "results": [
+    {
+      "word": "Nostalgic",
+      "definition": "Pleasure and sadness when remembering past events.",
+      "collocation": "a wave of nostalgia",
+      "baseSynonym": "happy sad memory"
+    }
+  ]
+}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    if (!res.ok) throw new Error(`Gemini API HTTP ${res.status}`);
+    const data = await res.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanJson);
+  } catch (err) {
+    console.error('Gemini Reverse Search Error:', err);
+    return reverseSearchWithMock(conceptQuery);
+  }
+}
+
+async function guessTabooWithGemini(explanationText, targetWord, forbiddenWords, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  const prompt = `Playing Taboo. User described "${targetWord}" without forbidden words [${forbiddenWords.join(', ')}]. User text: "${explanationText}". Output JSON: { "guessedWord": "${targetWord}", "isCorrect": true, "feedback": "Great work!" }`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    if (!res.ok) throw new Error(`Gemini API HTTP ${res.status}`);
+    const data = await res.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanJson);
+  } catch (err) {
+    return guessTabooWithMock(explanationText, targetWord, forbiddenWords);
+  }
+}
+
+/* =========================================================================
+   2. OLLAMA & MOCK ENGINES
+   ========================================================================= */
+
+async function analyzeWithOllama(transcript, scenarioPrompt, endpoint, model) {
+  const prompt = `Analyze transcript: "${transcript}". Output JSON { "crutchesFound": [], "upgrades": [{ "crutch": "...", "targetWord": "...", "collocation": "...", "definition": "..." }], "polishedSentence": "..." }`;
+  try {
+    const res = await fetch(`${endpoint}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, prompt, stream: false, format: 'json' })
+    });
+    const data = await res.json();
+    return JSON.parse(data.response);
+  } catch (err) {
+    return analyzeWithMock(transcript, scenarioPrompt);
   }
 }
 
@@ -152,57 +271,6 @@ function generateScenariosWithMock(targetWords) {
   ]);
 }
 
-/* =========================================================================
-   ANALYSIS & REVERSE DICTIONARY
-   ========================================================================= */
-
-async function analyzeWithGemini(transcript, scenarioPrompt, apiKey) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  const systemPrompt = `You are a speech eloquence coach. Analyze transcript: "${transcript}" in context: "${scenarioPrompt}".
-Identify basic words and output JSON:
-{
-  "crutchesFound": ["very big"],
-  "upgrades": [
-    {
-      "crutch": "very big",
-      "targetWord": "Colossal",
-      "collocation": "a colossal mistake",
-      "definition": "Extremely large or immense."
-    }
-  ],
-  "polishedSentence": "A polished upgraded sentence."
-}`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
-    });
-    const data = await res.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanJson);
-  } catch (err) {
-    return analyzeWithMock(transcript, scenarioPrompt);
-  }
-}
-
-async function analyzeWithOllama(transcript, scenarioPrompt, endpoint, model) {
-  const prompt = `Analyze transcript: "${transcript}". Output JSON { "crutchesFound": [], "upgrades": [{ "crutch": "...", "targetWord": "...", "collocation": "...", "definition": "..." }], "polishedSentence": "..." }`;
-  try {
-    const res = await fetch(`${endpoint}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false, format: 'json' })
-    });
-    const data = await res.json();
-    return JSON.parse(data.response);
-  } catch (err) {
-    return analyzeWithMock(transcript, scenarioPrompt);
-  }
-}
-
 function analyzeWithMock(transcript, scenarioPrompt) {
   const lower = transcript.toLowerCase();
   const crutchesFound = [];
@@ -230,14 +298,6 @@ function analyzeWithMock(transcript, scenarioPrompt) {
   });
 }
 
-function reverseSearchWithGemini(conceptQuery, apiKey) {
-  return reverseSearchWithMock(conceptQuery);
-}
-
-function reverseSearchWithOllama(conceptQuery, endpoint, model) {
-  return reverseSearchWithMock(conceptQuery);
-}
-
 function reverseSearchWithMock(conceptQuery) {
   return Promise.resolve({
     results: [
@@ -245,14 +305,6 @@ function reverseSearchWithMock(conceptQuery) {
       { word: 'Wistful', definition: 'Showing or feeling a regretful or vague longing.', collocation: 'a wistful smile', baseSynonym: 'longing' }
     ]
   });
-}
-
-function guessTabooWithGemini(explanationText, targetWord, forbiddenWords, apiKey) {
-  return guessTabooWithMock(explanationText, targetWord, forbiddenWords);
-}
-
-function guessTabooWithOllama(explanationText, targetWord, forbiddenWords, endpoint, model) {
-  return guessTabooWithMock(explanationText, targetWord, forbiddenWords);
 }
 
 function guessTabooWithMock(explanationText, targetWord, forbiddenWords) {

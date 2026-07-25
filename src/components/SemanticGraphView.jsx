@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
-import { GitFork, Search, Plus, Filter, Trash2, Edit3, CheckCircle2, RotateCcw, Save } from 'lucide-react';
+import { Search, Plus, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Sparkles, ArrowRight, Zap } from 'lucide-react';
 import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph } from '../services/storage.js';
 
 export default function SemanticGraphView() {
@@ -11,9 +11,8 @@ export default function SemanticGraphView() {
   const [nodesData, setNodesData] = useState(getNodes());
   const [edgesData, setEdgesData] = useState(getEdges());
 
+  const [searchWord, setSearchWord] = useState('Boring');
   const [selectedNode, setSelectedNode] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all');
 
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
@@ -21,64 +20,80 @@ export default function SemanticGraphView() {
   const [editDef, setEditDef] = useState('');
   const [editCollocation, setEditCollocation] = useState('');
 
-  // Add Node Form State
+  // Add Form State
   const [showAddForm, setShowAddForm] = useState(false);
   const [newWord, setNewWord] = useState('');
   const [newDef, setNewDef] = useState('');
   const [newCollocation, setNewCollocation] = useState('');
 
-  // Mount Vis.js Network Canvas
+  // Calculate Neighborhood for searchWord
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const filteredNodes = nodesData.filter(n => {
-      const matchesCat = filterCategory === 'all' || n.category === filterCategory;
-      const matchesSearch = !searchQuery || n.label.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCat && matchesSearch;
+    const term = searchWord.toLowerCase().trim();
+    
+    // Find matching root node or fallback to first node
+    let root = nodesData.find(n => n.label.toLowerCase().includes(term) || term.includes(n.label.toLowerCase()));
+    if (!root && nodesData.length > 0) root = nodesData[0];
+    if (!root) return;
+
+    // Find all directly connected nodes via edges
+    const connectedNodeIds = new Set([root.id]);
+    edgesData.forEach(e => {
+      if (e.from === root.id) connectedNodeIds.add(e.to);
+      if (e.to === root.id) connectedNodeIds.add(e.from);
     });
 
-    const visibleNodeIds = new Set(filteredNodes.map(n => n.id));
-    const filteredEdges = edgesData.filter(e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
+    // Filter nodes in neighborhood
+    const neighborhoodNodes = nodesData.filter(n => connectedNodeIds.has(n.id) || n.label.toLowerCase().includes(term));
+    const neighborhoodNodeIds = new Set(neighborhoodNodes.map(n => n.id));
+    const neighborhoodEdges = edgesData.filter(e => neighborhoodNodeIds.has(e.from) && neighborhoodNodeIds.has(e.to));
 
+    // Vis.js Dataset
     const visNodes = new DataSet(
-      filteredNodes.map(n => ({
-        id: n.id,
-        label: `${n.label}\n(${n.category})`,
-        shape: 'dot',
-        size: n.category === 'active' ? 26 : (n.category === 'passive' ? 22 : 18),
-        color: {
-          background: n.color || (n.category === 'active' ? '#10b981' : (n.category === 'passive' ? '#f97316' : '#3b82f6')),
-          border: '#ffffff',
-          highlight: { background: '#c084fc', border: '#ffffff' }
-        },
-        font: { color: '#ffffff', face: 'Inter', size: 13, strokeWidth: 3, strokeColor: '#0f172a' }
-      }))
+      neighborhoodNodes.map(n => {
+        const isRoot = n.id === root.id;
+        return {
+          id: n.id,
+          label: `${n.label}\n(${n.category.toUpperCase()})`,
+          shape: 'dot',
+          size: isRoot ? 34 : (n.category === 'active' ? 26 : 22),
+          color: {
+            background: isRoot ? '#c084fc' : (n.category === 'active' ? '#10b981' : (n.category === 'passive' ? '#f97316' : '#3b82f6')),
+            border: '#ffffff',
+            highlight: { background: '#d946ef', border: '#ffffff' }
+          },
+          font: { color: '#ffffff', face: 'Inter', size: isRoot ? 15 : 13, strokeWidth: 3, strokeColor: '#0f172a' }
+        };
+      })
     );
 
     const visEdges = new DataSet(
-      filteredEdges.map(e => ({
+      neighborhoodEdges.map(e => ({
         from: e.from,
         to: e.to,
         label: e.label || '',
-        color: { color: 'rgba(255, 255, 255, 0.25)', highlight: '#c084fc' },
-        font: { color: '#94a3b8', size: 10 }
+        color: { color: 'rgba(255, 255, 255, 0.4)', highlight: '#d946ef' },
+        font: { color: '#94a3b8', size: 11 }
       }))
     );
 
     const options = {
       nodes: { borderWidth: 2, shadow: true },
-      edges: { width: 1.5, smooth: { type: 'continuous' } },
-      physics: { barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 120 } },
+      edges: { width: 2, smooth: { type: 'continuous' } },
+      physics: { barnesHut: { gravitationalConstant: -2500, centralGravity: 0.3, springLength: 140 } },
       interaction: { hover: true, zoomView: true, dragView: true }
     };
 
     networkRef.current = new Network(containerRef.current, { nodes: visNodes, edges: visEdges }, options);
 
+    setSelectedNode(root);
+
     networkRef.current.on('selectNode', (params) => {
       const clickedId = params.nodes[0];
       const clicked = nodesData.find(n => n.id === clickedId);
-      setSelectedNode(clicked || null);
       if (clicked) {
+        setSelectedNode(clicked);
         setEditLabel(clicked.label);
         setEditDef(clicked.definition || '');
         setEditCollocation(clicked.collocation || '');
@@ -86,15 +101,10 @@ export default function SemanticGraphView() {
       }
     });
 
-    networkRef.current.on('deselectNode', () => {
-      setSelectedNode(null);
-      setIsEditing(false);
-    });
-
     return () => {
       if (networkRef.current) networkRef.current.destroy();
     };
-  }, [nodesData, edgesData, filterCategory, searchQuery]);
+  }, [nodesData, edgesData, searchWord]);
 
   // Handle Category Toggle (Active <-> Passive Deep)
   const handleToggleCategory = (newCat) => {
@@ -105,16 +115,15 @@ export default function SemanticGraphView() {
     setSelectedNode({ ...selectedNode, category: newCat, color: newCat === 'active' ? '#10b981' : (newCat === 'passive' ? '#f97316' : '#3b82f6') });
   };
 
-  // Handle Delete Node
   const handleDeleteNode = () => {
     if (!selectedNode) return;
     deleteNodeFromGraph(selectedNode.id);
-    setNodesData(getNodes());
+    const updatedNodes = getNodes();
+    setNodesData(updatedNodes);
     setEdgesData(getEdges());
-    setSelectedNode(null);
+    setSelectedNode(updatedNodes[0] || null);
   };
 
-  // Handle Edit Node Save
   const handleSaveEdit = () => {
     if (!selectedNode) return;
     editNodeInGraph(selectedNode.id, {
@@ -131,7 +140,7 @@ export default function SemanticGraphView() {
   const handleCreateNode = (e) => {
     e.preventDefault();
     if (!newWord.trim()) return;
-    addNodeToGraph(newWord, newDef, 'passive', newCollocation, '');
+    addNodeToGraph(newWord, newDef, 'passive', newCollocation, searchWord);
     setNodesData(getNodes());
     setEdgesData(getEdges());
     setNewWord('');
@@ -140,6 +149,9 @@ export default function SemanticGraphView() {
     setShowAddForm(false);
   };
 
+  // Quick Search Preset Terms
+  const presetTerms = ['Boring', 'Big', 'Bad', 'Important', 'Happy', 'Delay'];
+
   return (
     <div style={{ maxWidth: '1300px', margin: '0 auto', padding: '1.25rem 1rem' }}>
       
@@ -147,8 +159,11 @@ export default function SemanticGraphView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <GitFork color="var(--accent-purple)" size={22} /> Semantic Web Graph
+            <Sparkles color="var(--accent-purple)" size={22} /> Lexicon Neighborhood Explorer
           </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+            Search any concept to explore its connected Surface Lexicon crutches, Deep Lexicon upgrades, and Native Collocations.
+          </p>
         </div>
 
         <button onClick={() => setShowAddForm(true)} className="btn btn-primary" style={{ padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}>
@@ -156,56 +171,68 @@ export default function SemanticGraphView() {
         </button>
       </div>
 
-      {/* Toolbar Filters */}
-      <div className="glass-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', overflowX: 'auto' }}>
-          <Filter size={15} color="var(--text-muted)" />
-          <button onClick={() => setFilterCategory('all')} className={`btn ${filterCategory === 'all' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.3rem 0.65rem', minHeight: '34px', fontSize: '0.78rem' }}>
-            All ({nodesData.length})
-          </button>
-          <button onClick={() => setFilterCategory('active')} className={`btn ${filterCategory === 'active' ? 'btn-emerald' : 'btn-secondary'}`} style={{ padding: '0.3rem 0.65rem', minHeight: '34px', fontSize: '0.78rem' }}>
-            ● Active ({nodesData.filter(n => n.category === 'active').length})
-          </button>
-          <button onClick={() => setFilterCategory('passive')} className={`btn ${filterCategory === 'passive' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.3rem 0.65rem', minHeight: '34px', fontSize: '0.78rem', background: filterCategory === 'passive' ? 'var(--accent-amber)' : '' }}>
-            ● Deep Lexicon ({nodesData.filter(n => n.category === 'passive').length})
-          </button>
+      {/* Concept Search & Preset Chips */}
+      <div className="glass-card" style={{ marginBottom: '1.25rem', padding: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              placeholder="Type any word or concept (e.g. Boring, Big, Important)..."
+              value={searchWord}
+              onChange={(e) => setSearchWord(e.target.value)}
+              style={{ width: '100%', padding: '0.55rem 0.5rem 0.55rem 2.2rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+            />
+          </div>
         </div>
 
-        <div style={{ position: 'relative', width: '200px' }}>
-          <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Search word..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', padding: '0.4rem 0.5rem 0.4rem 1.8rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.8)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.8rem' }}
-          />
+        {/* Preset Quick Chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Quick Concepts:</span>
+          {presetTerms.map(term => (
+            <button
+              key={term}
+              onClick={() => setSearchWord(term)}
+              className={`btn ${searchWord.toLowerCase() === term.toLowerCase() ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.2rem 0.65rem', minHeight: '30px', fontSize: '0.75rem' }}
+            >
+              {term}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Main Canvas & Inspector View */}
-      <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 340px' : '1fr', gap: '1.25rem' }}>
+      {/* Neighborhood Canvas & Interactive Breakdown */}
+      <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 360px' : '1fr', gap: '1.25rem' }}>
         
-        <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden', minHeight: '480px' }}>
-          <div ref={containerRef} style={{ width: '100%', height: '480px', background: 'radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.95) 0%, rgba(9, 13, 22, 1) 100%)' }} />
+        {/* Force Directed Centered Canvas */}
+        <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden', minHeight: '460px' }}>
+          <div ref={containerRef} style={{ width: '100%', height: '460px', background: 'radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.95) 0%, rgba(9, 13, 22, 1) 100%)' }} />
+          
+          <div style={{ position: 'absolute', bottom: '12px', left: '12px', background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', gap: '0.75rem', fontSize: '0.75rem' }}>
+            <span style={{ color: '#c084fc' }}>🟣 Searched Concept</span>
+            <span style={{ color: '#3b82f6' }}>🔵 Surface Crutch</span>
+            <span style={{ color: '#f97316' }}>🟠 Deep Lexicon</span>
+            <span style={{ color: '#10b981' }}>🟢 Active Spoken</span>
+          </div>
         </div>
 
-        {/* Selected Node Inspector Drawer */}
+        {/* Selected Word Neighborhood Details */}
         {selectedNode && (
           <div className="glass-panel animate-fade-in" style={{ padding: '1.25rem', borderColor: 'var(--accent-purple)' }}>
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
-              <span className={`badge ${selectedNode.category === 'active' ? 'badge-emerald' : 'badge-amber'}`}>
-                {selectedNode.category.toUpperCase()}
+              <span className={`badge ${selectedNode.category === 'active' ? 'badge-emerald' : (selectedNode.category === 'passive' ? 'badge-amber' : 'badge-purple')}`}>
+                {selectedNode.category.toUpperCase()} LEXICON
               </span>
+              
               <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <button onClick={() => setIsEditing(!isEditing)} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer' }} title="Edit Node">
+                <button onClick={() => setIsEditing(!isEditing)} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer' }} title="Edit Word">
                   <Edit3 size={16} />
                 </button>
-                <button onClick={handleDeleteNode} style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer' }} title="Delete Node">
+                <button onClick={handleDeleteNode} style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer' }} title="Delete Word">
                   <Trash2 size={16} />
                 </button>
-                <button onClick={() => setSelectedNode(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
               </div>
             </div>
 
@@ -221,9 +248,9 @@ export default function SemanticGraphView() {
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0.2rem 0' }}>{selectedNode.definition || 'No definition logged.'}</p>
                 </div>
 
-                <div className="glass-card" style={{ marginBottom: '1rem', padding: '0.75rem' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', fontWeight: 700 }}>Native Collocation</span>
-                  <p style={{ fontSize: '0.85rem', color: '#ffffff', fontWeight: 600, margin: '0.2rem 0' }}>"{selectedNode.collocation || `native use of ${selectedNode.label}`}"</p>
+                <div className="glass-card" style={{ marginBottom: '1rem', padding: '0.75rem', borderColor: 'rgba(6, 182, 212, 0.3)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', fontWeight: 700 }}>Native Collocation Pairing</span>
+                  <p style={{ fontSize: '0.88rem', color: '#ffffff', fontWeight: 600, margin: '0.2rem 0' }}>"{selectedNode.collocation || `native use of ${selectedNode.label}`}"</p>
                 </div>
 
                 {/* Category Switcher Buttons */}
@@ -248,7 +275,7 @@ export default function SemanticGraphView() {
                 <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Definition</label>
                 <input type="text" value={editDef} onChange={(e) => setEditDef(e.target.value)} style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.82rem' }} />
                 
-                <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Collocation</label>
+                <label style={{ fontSize: '0.78rem', fontWeight 600 }}>Collocation</label>
                 <input type="text" value={editCollocation} onChange={(e) => setEditCollocation(e.target.value)} style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.82rem' }} />
 
                 <button onClick={handleSaveEdit} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.45rem', fontSize: '0.82rem' }}>
@@ -266,7 +293,7 @@ export default function SemanticGraphView() {
       {showAddForm && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '440px', padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.85rem', color: '#ffffff' }}>Add Word to Graph</h3>
+            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.85rem', color: '#ffffff' }}>Add Deep Lexicon Word to Neighborhood</h3>
             
             <form onSubmit={handleCreateNode}>
               <div style={{ marginBottom: '0.75rem' }}>
