@@ -17,7 +17,7 @@ export const getSettings = () => {
     ollamaModel: 'gemma2:2b',
     ttsRate: 1.0,
     ttsPitch: 1.0,
-    syncCode: '' // Personal Sync PIN for automatic cloud sync
+    syncCode: ''
   };
 };
 
@@ -40,7 +40,13 @@ export const saveProfile = (profile) => {
 
 export const getNodes = () => {
   const data = localStorage.getItem(STORAGE_KEYS.NODES);
-  return data ? JSON.parse(data) : INITIAL_VOCABULARY_NODES;
+  if (!data) return INITIAL_VOCABULARY_NODES;
+  try {
+    const parsed = JSON.parse(data);
+    return (Array.isArray(parsed) && parsed.length > 0) ? parsed : INITIAL_VOCABULARY_NODES;
+  } catch (err) {
+    return INITIAL_VOCABULARY_NODES;
+  }
 };
 
 export const saveNodes = (nodes) => {
@@ -50,12 +56,26 @@ export const saveNodes = (nodes) => {
 
 export const getEdges = () => {
   const data = localStorage.getItem(STORAGE_KEYS.EDGES);
-  return data ? JSON.parse(data) : INITIAL_VOCABULARY_EDGES;
+  if (!data) return INITIAL_VOCABULARY_EDGES;
+  try {
+    const parsed = JSON.parse(data);
+    return (Array.isArray(parsed) && parsed.length > 0) ? parsed : INITIAL_VOCABULARY_EDGES;
+  } catch (err) {
+    return INITIAL_VOCABULARY_EDGES;
+  }
 };
 
 export const saveEdges = (edges) => {
   localStorage.setItem(STORAGE_KEYS.EDGES, JSON.stringify(edges));
   triggerAutoCloudSync();
+};
+
+export const resetGraphToDefaults = () => {
+  localStorage.removeItem(STORAGE_KEYS.NODES);
+  localStorage.removeItem(STORAGE_KEYS.EDGES);
+  saveNodes(INITIAL_VOCABULARY_NODES);
+  saveEdges(INITIAL_VOCABULARY_EDGES);
+  return { nodes: INITIAL_VOCABULARY_NODES, edges: INITIAL_VOCABULARY_EDGES };
 };
 
 export const addNodeToGraph = (word, definition = '', category = 'passive', collocation = '', baseSynonym = '') => {
@@ -127,10 +147,6 @@ export const editNodeInGraph = (nodeId, updatedFields) => {
   }
 };
 
-/* =========================================================================
-   ZERO-TOUCH AUTOMATIC CLOUD SYNC ENGINE (PC <-> Phone)
-   ========================================================================= */
-
 export const triggerAutoCloudSync = async () => {
   const settings = getSettings();
   if (!settings.syncCode) return;
@@ -149,7 +165,7 @@ export const triggerAutoCloudSync = async () => {
       body: JSON.stringify(payload)
     });
   } catch (err) {
-    console.warn('Auto cloud sync backup skipped (offline or network proxy):', err);
+    console.warn('Auto cloud sync backup skipped:', err);
   }
 };
 

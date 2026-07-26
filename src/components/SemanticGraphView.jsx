@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
-import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Download, Upload, RefreshCw } from 'lucide-react';
-import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph, exportBackupData, importBackupData } from '../services/storage.js';
+import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Download, Upload, RefreshCw, Grid, GitFork } from 'lucide-react';
+import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph, exportBackupData, importBackupData, resetGraphToDefaults } from '../services/storage.js';
 
 export default function SemanticGraphView() {
   const containerRef = useRef(null);
@@ -14,6 +14,7 @@ export default function SemanticGraphView() {
   const [searchWord, setSearchWord] = useState('');
   const [quickDumpInput, setQuickDumpInput] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
+  const [viewMode, setViewMode] = useState('canvas'); // 'canvas' | 'grid'
 
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
@@ -26,9 +27,17 @@ export default function SemanticGraphView() {
   const [backupText, setBackupText] = useState('');
   const [syncNotice, setSyncNotice] = useState('');
 
-  // Calculate & Mount Vis.js Floating Word Graph
+  // Reset Graph to Defaults
+  const handleResetDefaults = () => {
+    const res = resetGraphToDefaults();
+    setNodesData(res.nodes);
+    setEdgesData(res.edges);
+    setSelectedNode(res.nodes[0] || null);
+  };
+
+  // Mount Vis.js Floating Word Graph
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || viewMode !== 'canvas') return;
 
     const term = searchWord.toLowerCase().trim();
     let root = null;
@@ -51,7 +60,7 @@ export default function SemanticGraphView() {
       displayEdges = edgesData.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
     }
 
-    // Vis.js Dataset: Clean Floating Word Pills (Transparent Box / Text)
+    // Vis.js Dataset: Clean Floating Word Pills
     const visNodes = new DataSet(
       displayNodes.map(n => {
         const isRoot = root && n.id === root.id;
@@ -59,29 +68,29 @@ export default function SemanticGraphView() {
         const isActive = n.category === 'active';
         const isPassive = n.category === 'passive';
 
-        let textColor = '#60a5fa'; // Blue (Surface Crutch default)
-        let bgColor = 'rgba(30, 58, 138, 0.2)';
-        let borderColor = 'rgba(96, 165, 250, 0.4)';
+        let textColor = '#60a5fa'; // Blue (Surface Crutch)
+        let bgColor = 'rgba(30, 58, 138, 0.35)';
+        let borderColor = '#60a5fa';
         let fontSize = 14;
 
         if (isRoot) {
           textColor = '#ffffff';
-          bgColor = 'rgba(139, 92, 246, 0.6)'; // Purple Root
+          bgColor = 'rgba(139, 92, 246, 0.7)'; // Purple Root
           borderColor = '#c084fc';
           fontSize = 17;
         } else if (isActive) {
           textColor = '#ffffff';
-          bgColor = 'rgba(16, 185, 129, 0.4)'; // Emerald Active
+          bgColor = 'rgba(16, 185, 129, 0.5)'; // Emerald Active
           borderColor = '#10b981';
           fontSize = 15;
         } else if (isPassive) {
           textColor = '#fed7aa';
-          bgColor = 'rgba(249, 115, 22, 0.3)'; // Amber Deep
+          bgColor = 'rgba(249, 115, 22, 0.4)'; // Amber Deep
           borderColor = '#f97316';
           fontSize = 14;
         } else if (isCollocation) {
           textColor = '#a5f3fc';
-          bgColor = 'rgba(6, 182, 212, 0.2)'; // Cyan Collocation
+          bgColor = 'rgba(6, 182, 212, 0.25)'; // Cyan Collocation
           borderColor = '#22d3ee';
           fontSize = 12;
         }
@@ -94,7 +103,7 @@ export default function SemanticGraphView() {
           color: {
             background: bgColor,
             border: borderColor,
-            highlight: { background: 'rgba(217, 70, 239, 0.6)', border: '#d946ef' }
+            highlight: { background: 'rgba(217, 70, 239, 0.7)', border: '#d946ef' }
           },
           font: {
             color: textColor,
@@ -111,7 +120,7 @@ export default function SemanticGraphView() {
         from: e.from,
         to: e.to,
         label: e.label || '',
-        color: { color: 'rgba(255, 255, 255, 0.2)', highlight: '#d946ef' },
+        color: { color: 'rgba(255, 255, 255, 0.25)', highlight: '#d946ef' },
         font: { color: '#94a3b8', size: 11, strokeWidth: 3, strokeColor: '#090d16' }
       }))
     );
@@ -127,7 +136,6 @@ export default function SemanticGraphView() {
 
     if (root) setSelectedNode(root);
 
-    // Ensure fit and center on load
     setTimeout(() => {
       if (networkRef.current) {
         networkRef.current.redraw();
@@ -155,7 +163,7 @@ export default function SemanticGraphView() {
     return () => {
       if (networkRef.current) networkRef.current.destroy();
     };
-  }, [nodesData, edgesData, searchWord]);
+  }, [nodesData, edgesData, searchWord, viewMode]);
 
   // Quick Word Dump Handler
   const handleQuickDump = (e) => {
@@ -241,6 +249,9 @@ export default function SemanticGraphView() {
 
   const presetTerms = ['Boring', 'Big', 'Risky', 'Important', 'Happy', 'Delay'];
 
+  // Filtered nodes for grid view / canvas
+  const filteredNodes = nodesData.filter(n => !searchWord || n.label.toLowerCase().includes(searchWord.toLowerCase()));
+
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'radial-gradient(circle at 50% 50%, #0f172a 0%, #090d16 100%)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
@@ -253,7 +264,7 @@ export default function SemanticGraphView() {
             <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              placeholder="Search concept (e.g. Boring)..."
+              placeholder="Search word (e.g. Boring)..."
               value={searchWord}
               onChange={(e) => setSearchWord(e.target.value)}
               style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.1rem', borderRadius: '20px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
@@ -267,12 +278,17 @@ export default function SemanticGraphView() {
               placeholder="Dump word..."
               value={quickDumpInput}
               onChange={(e) => setQuickDumpInput(e.target.value)}
-              style={{ width: '110px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
+              style={{ width: '100px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
             />
             <button type="submit" className="btn btn-primary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Dump Word to Graph">
               <Zap size={16} />
             </button>
           </form>
+
+          {/* View Mode Toggle */}
+          <button onClick={() => setViewMode(viewMode === 'canvas' ? 'grid' : 'canvas')} className="btn btn-secondary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Toggle View Mode">
+            {viewMode === 'canvas' ? <Grid size={16} /> : <GitFork size={16} />}
+          </button>
 
           {/* Backup Button */}
           <button onClick={() => setShowSyncModal(true)} className="btn btn-secondary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Backup & Restore">
@@ -284,7 +300,7 @@ export default function SemanticGraphView() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', overflowX: 'auto' }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, whitespace: 'nowrap' }}>Concepts:</span>
           <button onClick={() => setSearchWord('')} className={`btn ${!searchWord ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px' }}>
-            All Words ({nodesData.length})
+            All ({nodesData.length})
           </button>
           {presetTerms.map(term => (
             <button
@@ -296,21 +312,60 @@ export default function SemanticGraphView() {
               {term}
             </button>
           ))}
+          <button onClick={handleResetDefaults} className="btn btn-secondary" style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px', color: 'var(--accent-amber)' }}>
+            Reset Graph
+          </button>
         </div>
 
       </div>
 
-      {/* Main Graph Canvas */}
-      <div style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}>
-        <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+      {/* Main Content View (Canvas or Grid Cards) */}
+      <div style={{ flex: 1, width: '100%', height: '100%', position: 'relative', overflowY: viewMode === 'grid' ? 'auto' : 'hidden' }}>
+        
+        {viewMode === 'canvas' ? (
+          <>
+            <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+            
+            {/* Legend */}
+            <div style={{ position: 'absolute', bottom: selectedNode ? '220px' : '16px', left: '16px', transition: 'bottom 0.3s ease', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', gap: '0.65rem', fontSize: '0.72rem' }}>
+              <span style={{ color: '#c084fc', fontWeight: 600 }}>🟣 Concept Root</span>
+              <span style={{ color: '#f97316', fontWeight: 600 }}>🟠 Deep Lexicon</span>
+              <span style={{ color: '#10b981', fontWeight: 600 }}>🟢 Active Spoken</span>
+              <span style={{ color: '#22d3ee', fontWeight: 600 }}>🌿 Collocation</span>
+            </div>
+          </>
+        ) : (
+          /* Grid Card Matrix View */
+          <div style={{ padding: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', paddingBottom: '240px' }}>
+            {filteredNodes.map(n => (
+              <div
+                key={n.id}
+                onClick={() => { setSelectedNode(n); setEditLabel(n.label); setEditDef(n.definition || ''); setEditCollocation(n.collocation || ''); }}
+                className="glass-card"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: selectedNode?.id === n.id ? 'var(--accent-purple)' : (n.category === 'active' ? '#10b981' : (n.category === 'passive' ? '#f97316' : '#3b82f6')),
+                  background: selectedNode?.id === n.id ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                  padding: '0.85rem'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <h4 style={{ fontSize: '0.95rem', color: '#ffffff', margin: 0 }}>{n.label}</h4>
+                  <span className={`badge ${n.category === 'active' ? 'badge-emerald' : 'badge-amber'}`} style={{ fontSize: '0.6rem' }}>
+                    {n.category}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0' }}>{n.definition || 'Deep lexicon word'}</p>
+                {n.collocation && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', fontWeight: 600, margin: '0.2rem 0' }}>
+                    "{n.collocation}"
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* Legend */}
-        <div style={{ position: 'absolute', bottom: selectedNode ? '220px' : '16px', left: '16px', transition: 'bottom 0.3s ease', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', gap: '0.65rem', fontSize: '0.72rem' }}>
-          <span style={{ color: '#c084fc', fontWeight: 600 }}>🟣 Concept Root</span>
-          <span style={{ color: '#f97316', fontWeight: 600 }}>🟠 Deep Lexicon</span>
-          <span style={{ color: '#10b981', fontWeight: 600 }}>🟢 Active Spoken</span>
-          <span style={{ color: '#22d3ee', fontWeight: 600 }}>🌿 Collocation</span>
-        </div>
       </div>
 
       {/* Bottom Drawer Inspector */}
