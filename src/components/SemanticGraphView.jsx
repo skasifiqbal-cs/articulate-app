@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
-import { Search, Plus, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Sparkles, ArrowRight, Zap } from 'lucide-react';
-import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph } from '../services/storage.js';
+import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Sparkles, Plus, Download, Upload } from 'lucide-react';
+import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph, exportBackupData, importBackupData } from '../services/storage.js';
 
 export default function SemanticGraphView() {
   const containerRef = useRef(null);
@@ -11,7 +11,8 @@ export default function SemanticGraphView() {
   const [nodesData, setNodesData] = useState(getNodes());
   const [edgesData, setEdgesData] = useState(getEdges());
 
-  const [searchWord, setSearchWord] = useState('Boring');
+  const [searchWord, setSearchWord] = useState('');
+  const [quickDumpInput, setQuickDumpInput] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
 
   // Edit Mode State
@@ -20,74 +21,98 @@ export default function SemanticGraphView() {
   const [editDef, setEditDef] = useState('');
   const [editCollocation, setEditCollocation] = useState('');
 
-  // Add Form State
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newWord, setNewWord] = useState('');
-  const [newDef, setNewDef] = useState('');
-  const [newCollocation, setNewCollocation] = useState('');
+  // Backup / Sync Modal State
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [backupText, setBackupText] = useState('');
+  const [syncNotice, setSyncNotice] = useState('');
 
-  // Calculate Neighborhood for searchWord
+  // Calculate & Mount Vis.js Floating Text Graph (NO CIRCLES!)
   useEffect(() => {
     if (!containerRef.current) return;
 
     const term = searchWord.toLowerCase().trim();
+    let root = null;
     
-    // Find matching root node or fallback to first node
-    let root = nodesData.find(n => n.label.toLowerCase().includes(term) || term.includes(n.label.toLowerCase()));
-    if (!root && nodesData.length > 0) root = nodesData[0];
-    if (!root) return;
+    if (term) {
+      root = nodesData.find(n => n.label.toLowerCase().includes(term) || term.includes(n.label.toLowerCase()));
+    }
 
-    // Find all directly connected nodes via edges
-    const connectedNodeIds = new Set([root.id]);
-    edgesData.forEach(e => {
-      if (e.from === root.id) connectedNodeIds.add(e.to);
-      if (e.to === root.id) connectedNodeIds.add(e.from);
-    });
+    let displayNodes = nodesData;
+    let displayEdges = edgesData;
 
-    // Filter nodes in neighborhood
-    const neighborhoodNodes = nodesData.filter(n => connectedNodeIds.has(n.id) || n.label.toLowerCase().includes(term));
-    const neighborhoodNodeIds = new Set(neighborhoodNodes.map(n => n.id));
-    const neighborhoodEdges = edgesData.filter(e => neighborhoodNodeIds.has(e.from) && neighborhoodNodeIds.has(e.to));
+    if (root) {
+      const connectedNodeIds = new Set([root.id]);
+      edgesData.forEach(e => {
+        if (e.from === root.id) connectedNodeIds.add(e.to);
+        if (e.to === root.id) connectedNodeIds.add(e.from);
+      });
+      displayNodes = nodesData.filter(n => connectedNodeIds.has(n.id) || n.label.toLowerCase().includes(term));
+      const visibleIds = new Set(displayNodes.map(n => n.id));
+      displayEdges = edgesData.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+    }
 
-    // Vis.js Dataset
+    // Vis.js Dataset: PURE FLOATING TYPOGRAPHY (shape: 'text')
     const visNodes = new DataSet(
-      neighborhoodNodes.map(n => {
-        const isRoot = n.id === root.id;
+      displayNodes.map(n => {
+        const isRoot = root && n.id === root.id;
+        const isCollocation = n.category === 'collocation';
+        const isActive = n.category === 'active';
+        const isPassive = n.category === 'passive';
+
+        let textColor = '#60a5fa'; // Blue (Surface Crutch default)
+        let fontSize = 14;
+        let fontFace = 'Inter';
+
+        if (isRoot) {
+          textColor = '#c084fc'; // Purple (Root Concept)
+          fontSize = 18;
+        } else if (isActive) {
+          textColor = '#10b981'; // Green (Active Spoken)
+          fontSize = 15;
+        } else if (isPassive) {
+          textColor = '#f97316'; // Amber (Deep Lexicon)
+          fontSize = 14;
+        } else if (isCollocation) {
+          textColor = '#22d3ee'; // Cyan (Native Pairing)
+          fontSize = 12;
+        }
+
         return {
           id: n.id,
-          label: `${n.label}\n(${n.category.toUpperCase()})`,
-          shape: 'dot',
-          size: isRoot ? 34 : (n.category === 'active' ? 26 : 22),
-          color: {
-            background: isRoot ? '#c084fc' : (n.category === 'active' ? '#10b981' : (n.category === 'passive' ? '#f97316' : '#3b82f6')),
-            border: '#ffffff',
-            highlight: { background: '#d946ef', border: '#ffffff' }
-          },
-          font: { color: '#ffffff', face: 'Inter', size: isRoot ? 15 : 13, strokeWidth: 3, strokeColor: '#0f172a' }
+          label: isCollocation ? `"${n.label}"` : n.label,
+          shape: 'text', // NO CIRCLES! Floating Words Only!
+          font: {
+            color: textColor,
+            face: fontFace,
+            size: fontSize,
+            strokeWidth: 4,
+            strokeColor: '#090d16',
+            bold: isRoot || isActive
+          }
         };
       })
     );
 
     const visEdges = new DataSet(
-      neighborhoodEdges.map(e => ({
+      displayEdges.map(e => ({
         from: e.from,
         to: e.to,
         label: e.label || '',
-        color: { color: 'rgba(255, 255, 255, 0.4)', highlight: '#d946ef' },
-        font: { color: '#94a3b8', size: 11 }
+        color: { color: 'rgba(255, 255, 255, 0.18)', highlight: '#c084fc' },
+        font: { color: '#64748b', size: 10, strokeWidth: 2, strokeColor: '#090d16' }
       }))
     );
 
     const options = {
-      nodes: { borderWidth: 2, shadow: true },
-      edges: { width: 2, smooth: { type: 'continuous' } },
-      physics: { barnesHut: { gravitationalConstant: -2500, centralGravity: 0.3, springLength: 140 } },
+      nodes: { borderWidth: 0, shadow: false },
+      edges: { width: 1.2, smooth: { type: 'continuous' } },
+      physics: { barnesHut: { gravitationalConstant: -2200, centralGravity: 0.25, springLength: 130 } },
       interaction: { hover: true, zoomView: true, dragView: true }
     };
 
     networkRef.current = new Network(containerRef.current, { nodes: visNodes, edges: visEdges }, options);
 
-    setSelectedNode(root);
+    if (root) setSelectedNode(root);
 
     networkRef.current.on('selectNode', (params) => {
       const clickedId = params.nodes[0];
@@ -101,29 +126,59 @@ export default function SemanticGraphView() {
       }
     });
 
+    networkRef.current.on('deselectNode', () => {
+      setSelectedNode(null);
+      setIsEditing(false);
+    });
+
     return () => {
       if (networkRef.current) networkRef.current.destroy();
     };
   }, [nodesData, edgesData, searchWord]);
 
-  // Handle Category Toggle (Active <-> Passive Deep)
+  // Quick Word Dump Handler
+  const handleQuickDump = (e) => {
+    e.preventDefault();
+    if (!quickDumpInput.trim()) return;
+
+    const raw = quickDumpInput.trim();
+    const created = addNodeToGraph(
+      raw,
+      `Word dumped: ${raw}`,
+      'passive',
+      `native use of ${raw}`,
+      searchWord || 'Vocabulary'
+    );
+
+    const updatedNodes = getNodes();
+    const updatedEdges = getEdges();
+    setNodesData(updatedNodes);
+    setEdgesData(updatedEdges);
+    setSearchWord(raw);
+    setSelectedNode(created);
+    setQuickDumpInput('');
+  };
+
+  // Toggle Category (Active <-> Passive Deep)
   const handleToggleCategory = (newCat) => {
     if (!selectedNode) return;
     updateNodeCategory(selectedNode.id, newCat);
     const updatedNodes = getNodes();
     setNodesData(updatedNodes);
-    setSelectedNode({ ...selectedNode, category: newCat, color: newCat === 'active' ? '#10b981' : (newCat === 'passive' ? '#f97316' : '#3b82f6') });
+    setSelectedNode({ ...selectedNode, category: newCat });
   };
 
+  // Delete Node
   const handleDeleteNode = () => {
     if (!selectedNode) return;
     deleteNodeFromGraph(selectedNode.id);
     const updatedNodes = getNodes();
     setNodesData(updatedNodes);
     setEdgesData(getEdges());
-    setSelectedNode(updatedNodes[0] || null);
+    setSelectedNode(null);
   };
 
+  // Save Node Edit
   const handleSaveEdit = () => {
     if (!selectedNode) return;
     editNodeInGraph(selectedNode.id, {
@@ -137,180 +192,204 @@ export default function SemanticGraphView() {
     setIsEditing(false);
   };
 
-  const handleCreateNode = (e) => {
-    e.preventDefault();
-    if (!newWord.trim()) return;
-    addNodeToGraph(newWord, newDef, 'passive', newCollocation, searchWord);
-    setNodesData(getNodes());
-    setEdgesData(getEdges());
-    setNewWord('');
-    setNewDef('');
-    setNewCollocation('');
-    setShowAddForm(false);
+  // Export Backup
+  const handleExportBackup = () => {
+    const data = exportBackupData();
+    setBackupText(data);
+    navigator.clipboard.writeText(data);
+    setSyncNotice('Backup copied to clipboard!');
+    setTimeout(() => setSyncNotice(''), 3000);
   };
 
-  // Quick Search Preset Terms
-  const presetTerms = ['Boring', 'Big', 'Bad', 'Important', 'Happy', 'Delay'];
+  // Import Backup
+  const handleImportBackup = () => {
+    if (!backupText.trim()) return;
+    const ok = importBackupData(backupText);
+    if (ok) {
+      setNodesData(getNodes());
+      setEdgesData(getEdges());
+      setSyncNotice('✅ Graph backup restored!');
+      setTimeout(() => {
+        setSyncNotice('');
+        setShowSyncModal(false);
+      }, 1200);
+    } else {
+      setSyncNotice('❌ Invalid backup JSON.');
+    }
+  };
+
+  const presetTerms = ['Boring', 'Big', 'Risky', 'Important', 'Happy', 'Delay'];
 
   return (
-    <div style={{ maxWidth: '1300px', margin: '0 auto', padding: '1.25rem 1rem' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'radial-gradient(circle at 50% 50%, #0f172a 0%, #090d16 100%)', display: 'flex', flexDirection: 'column' }}>
       
-      {/* Header Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-        <div>
-          <h2 style={{ fontSize: '1.4rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Sparkles color="var(--accent-purple)" size={22} /> Lexicon Neighborhood Explorer
-          </h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-            Search any concept to explore its connected Surface Lexicon crutches, Deep Lexicon upgrades, and Native Collocations.
-          </p>
-        </div>
-
-        <button onClick={() => setShowAddForm(true)} className="btn btn-primary" style={{ padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}>
-          <Plus size={15} /> Add Deep Lexicon Word
-        </button>
-      </div>
-
-      {/* Concept Search & Preset Chips */}
-      <div className="glass-card" style={{ marginBottom: '1.25rem', padding: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+      {/* Minimal Top Bar (Search & Dump) */}
+      <div style={{ padding: '0.75rem 1rem', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', zIndex: 10, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Quick Search */}
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              placeholder="Type any word or concept (e.g. Boring, Big, Important)..."
+              placeholder="Search floating word or concept..."
               value={searchWord}
               onChange={(e) => setSearchWord(e.target.value)}
-              style={{ width: '100%', padding: '0.55rem 0.5rem 0.55rem 2.2rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+              style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.1rem', borderRadius: '20px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
             />
           </div>
+
+          {/* Quick Dump Input */}
+          <form onSubmit={handleQuickDump} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <input
+              type="text"
+              placeholder="Dump new word..."
+              value={quickDumpInput}
+              onChange={(e) => setQuickDumpInput(e.target.value)}
+              style={{ width: '130px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
+            />
+            <button type="submit" className="btn btn-primary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Dump Word to Graph">
+              <Zap size={16} />
+            </button>
+          </form>
+
+          {/* Backup Button */}
+          <button onClick={() => setShowSyncModal(true)} className="btn btn-secondary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Backup & Restore">
+            <Download size={16} />
+          </button>
         </div>
 
-        {/* Preset Quick Chips */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Quick Concepts:</span>
+        {/* Quick Concept Chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', overflowX: 'auto' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, whitespace: 'nowrap' }}>Concepts:</span>
+          <button onClick={() => setSearchWord('')} className={`btn ${!searchWord ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px' }}>
+            All Floating ({nodesData.length})
+          </button>
           {presetTerms.map(term => (
             <button
               key={term}
               onClick={() => setSearchWord(term)}
               className={`btn ${searchWord.toLowerCase() === term.toLowerCase() ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.2rem 0.65rem', minHeight: '30px', fontSize: '0.75rem' }}
+              style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px' }}
             >
               {term}
             </button>
           ))}
         </div>
+
       </div>
 
-      {/* Neighborhood Canvas & Interactive Breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 360px' : '1fr', gap: '1.25rem' }}>
-        
-        {/* Force Directed Centered Canvas */}
-        <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden', minHeight: '460px' }}>
-          <div ref={containerRef} style={{ width: '100%', height: '460px', background: 'radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.95) 0%, rgba(9, 13, 22, 1) 100%)' }} />
-          
-          <div style={{ position: 'absolute', bottom: '12px', left: '12px', background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', gap: '0.75rem', fontSize: '0.75rem' }}>
-            <span style={{ color: '#c084fc' }}>🟣 Searched Concept</span>
-            <span style={{ color: '#3b82f6' }}>🔵 Surface Crutch</span>
-            <span style={{ color: '#f97316' }}>🟠 Deep Lexicon</span>
-            <span style={{ color: '#10b981' }}>🟢 Active Spoken</span>
-          </div>
-        </div>
+      {/* Main Canvas: FLOATING WORDS ONLY */}
+      <div style={{ flex: 1, position: 'relative' }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-        {/* Selected Word Neighborhood Details */}
-        {selectedNode && (
-          <div className="glass-panel animate-fade-in" style={{ padding: '1.25rem', borderColor: 'var(--accent-purple)' }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
-              <span className={`badge ${selectedNode.category === 'active' ? 'badge-emerald' : (selectedNode.category === 'passive' ? 'badge-amber' : 'badge-purple')}`}>
-                {selectedNode.category.toUpperCase()} LEXICON
+        {/* Floating Legend */}
+        <div style={{ position: 'absolute', bottom: selectedNode ? '220px' : '16px', left: '16px', transition: 'bottom 0.3s ease', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', gap: '0.65rem', fontSize: '0.72rem' }}>
+          <span style={{ color: '#c084fc', fontWeight: 600 }}>🟣 Concept Root</span>
+          <span style={{ color: '#f97316', fontWeight: 600 }}>🟠 Deep Lexicon</span>
+          <span style={{ color: '#10b981', fontWeight: 600 }}>🟢 Active Spoken</span>
+          <span style={{ color: '#22d3ee', fontWeight: 600 }}>🌿 Collocation</span>
+        </div>
+      </div>
+
+      {/* Minimal Bottom Drawer Inspector */}
+      {selectedNode && (
+        <div className="glass-panel animate-fade-in" style={{
+          position: 'fixed',
+          bottom: 0, left: 0, right: 0,
+          maxHeight: '220px',
+          padding: '1rem 1.25rem',
+          borderRadius: '20px 20px 0 0',
+          borderTop: '1px solid rgba(139, 92, 246, 0.4)',
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(16px)',
+          zIndex: 100
+        }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className={`badge ${selectedNode.category === 'active' ? 'badge-emerald' : 'badge-amber'}`}>
+                {selectedNode.category.toUpperCase()}
               </span>
-              
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <button onClick={() => setIsEditing(!isEditing)} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer' }} title="Edit Word">
-                  <Edit3 size={16} />
-                </button>
-                <button onClick={handleDeleteNode} style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer' }} title="Delete Word">
-                  <Trash2 size={16} />
-                </button>
-              </div>
+              <h3 style={{ fontSize: '1.25rem', color: '#ffffff', margin: 0 }}>{selectedNode.label}</h3>
             </div>
 
-            {!isEditing ? (
-              <>
-                <h3 style={{ fontSize: '1.5rem', color: '#ffffff', marginBottom: '0.2rem' }}>{selectedNode.label}</h3>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.85rem' }}>
-                  Spoken {selectedNode.usageCount || 0} times in Sandbox
-                </p>
-
-                <div className="glass-card" style={{ marginBottom: '0.85rem', padding: '0.75rem' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Definition</span>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0.2rem 0' }}>{selectedNode.definition || 'No definition logged.'}</p>
-                </div>
-
-                <div className="glass-card" style={{ marginBottom: '1rem', padding: '0.75rem', borderColor: 'rgba(6, 182, 212, 0.3)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', fontWeight: 700 }}>Native Collocation Pairing</span>
-                  <p style={{ fontSize: '0.88rem', color: '#ffffff', fontWeight: 600, margin: '0.2rem 0' }}>"{selectedNode.collocation || `native use of ${selectedNode.label}`}"</p>
-                </div>
-
-                {/* Category Switcher Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  {selectedNode.category !== 'active' ? (
-                    <button onClick={() => handleToggleCategory('active')} className="btn btn-emerald" style={{ padding: '0.5rem', fontSize: '0.82rem' }}>
-                      <CheckCircle2 size={15} /> Move to Active Spoken
-                    </button>
-                  ) : (
-                    <button onClick={() => handleToggleCategory('passive')} className="btn btn-secondary" style={{ padding: '0.5rem', fontSize: '0.82rem', color: 'var(--accent-amber)' }}>
-                      <RotateCcw size={15} /> Move back to Deep Lexicon
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : (
-              /* Node Edit Form */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Word Label</label>
-                <input type="text" value={editLabel} onChange={(e) => setEditLabel(e.target.value)} style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.82rem' }} />
-                
-                <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Definition</label>
-                <input type="text" value={editDef} onChange={(e) => setEditDef(e.target.value)} style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.82rem' }} />
-                
-                <label style={{ fontSize: '0.78rem', fontWeight 600 }}>Collocation</label>
-                <input type="text" value={editCollocation} onChange={(e) => setEditCollocation(e.target.value)} style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.82rem' }} />
-
-                <button onClick={handleSaveEdit} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.45rem', fontSize: '0.82rem' }}>
-                  <Save size={15} /> Save Changes
-                </button>
-              </div>
-            )}
-
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button onClick={() => setIsEditing(!isEditing)} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer' }}>
+                <Edit3 size={16} />
+              </button>
+              <button onClick={handleDeleteNode} style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer' }}>
+                <Trash2 size={16} />
+              </button>
+              <button onClick={() => setSelectedNode(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
+            </div>
           </div>
-        )}
 
-      </div>
+          {!isEditing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
+                {selectedNode.definition || 'Deep lexicon word node.'}
+              </p>
+              
+              {selectedNode.collocation && (
+                <p style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', fontWeight: 600, margin: 0 }}>
+                  Pairing: "{selectedNode.collocation}"
+                </p>
+              )}
 
-      {/* Add Form Modal */}
-      {showAddForm && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '440px', padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.85rem', color: '#ffffff' }}>Add Deep Lexicon Word to Neighborhood</h3>
+              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                {selectedNode.category !== 'active' ? (
+                  <button onClick={() => handleToggleCategory('active')} className="btn btn-emerald" style={{ flex: 1, padding: '0.4rem', fontSize: '0.78rem' }}>
+                    <CheckCircle2 size={14} /> Move to Active Spoken
+                  </button>
+                ) : (
+                  <button onClick={() => handleToggleCategory('passive')} className="btn btn-secondary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.78rem', color: 'var(--accent-amber)' }}>
+                    <RotateCcw size={14} /> Move back to Deep Lexicon
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <input type="text" value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Word" style={{ padding: '0.35rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.78rem' }} />
+              <input type="text" value={editDef} onChange={(e) => setEditDef(e.target.value)} placeholder="Definition" style={{ padding: '0.35rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.78rem' }} />
+              <input type="text" value={editCollocation} onChange={(e) => setEditCollocation(e.target.value)} placeholder="Collocation" style={{ padding: '0.35rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.78rem' }} />
+              <button onClick={handleSaveEdit} className="btn btn-primary" style={{ padding: '0.35rem', fontSize: '0.78rem' }}>
+                <Save size={14} /> Save Edit
+              </button>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* Backup / Sync Modal */}
+      {showSyncModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '440px', padding: '1.25rem' }}>
+            <h3 style={{ fontSize: '1.1rem', color: '#fff', marginBottom: '0.5rem' }}>Backup & Restore Lexicon Graph</h3>
             
-            <form onSubmit={handleCreateNode}>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <input type="text" required placeholder="Word / Idiom" value={newWord} onChange={(e) => setNewWord(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }} />
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <input type="text" placeholder="Definition" value={newDef} onChange={(e) => setNewDef(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <input type="text" placeholder="Native Collocation" value={newCollocation} onChange={(e) => setNewCollocation(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }} />
-              </div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.65rem' }}>
+              <button onClick={handleExportBackup} className="btn btn-emerald" style={{ flex: 1, padding: '0.45rem', fontSize: '0.78rem' }}>
+                <Download size={14} /> Export Backup
+              </button>
+              <button onClick={handleImportBackup} className="btn btn-secondary" style={{ flex: 1, padding: '0.45rem', fontSize: '0.78rem' }}>
+                <Upload size={14} /> Import Backup
+              </button>
+            </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Add Word</button>
-              </div>
-            </form>
+            <textarea
+              rows={4}
+              value={backupText}
+              onChange={(e) => setBackupText(e.target.value)}
+              placeholder="Paste exported backup JSON string here..."
+              style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-sm)', background: 'rgba(15,23,42,0.9)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.75rem', fontFamily: 'monospace', resize: 'none' }}
+            />
+            {syncNotice && <p style={{ fontSize: '0.78rem', color: 'var(--accent-emerald)', marginTop: '0.35rem' }}>{syncNotice}</p>}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+              <button onClick={() => setShowSyncModal(false)} className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}>Close</button>
+            </div>
           </div>
         </div>
       )}
