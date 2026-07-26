@@ -1,20 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Network } from 'vis-network';
-import { DataSet } from 'vis-data';
-import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Download, Upload, RefreshCw, Grid, GitFork } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Download, Upload, RefreshCw } from 'lucide-react';
 import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph, exportBackupData, importBackupData, resetGraphToDefaults } from '../services/storage.js';
 
 export default function SemanticGraphView() {
-  const containerRef = useRef(null);
-  const networkRef = useRef(null);
-
   const [nodesData, setNodesData] = useState(getNodes());
   const [edgesData, setEdgesData] = useState(getEdges());
 
   const [searchWord, setSearchWord] = useState('');
   const [quickDumpInput, setQuickDumpInput] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
-  const [viewMode, setViewMode] = useState('canvas'); // 'canvas' | 'grid'
 
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
@@ -27,143 +21,13 @@ export default function SemanticGraphView() {
   const [backupText, setBackupText] = useState('');
   const [syncNotice, setSyncNotice] = useState('');
 
-  // Reset Graph to Defaults
+  // Reset Graph
   const handleResetDefaults = () => {
     const res = resetGraphToDefaults();
     setNodesData(res.nodes);
     setEdgesData(res.edges);
     setSelectedNode(res.nodes[0] || null);
   };
-
-  // Mount Vis.js Floating Word Graph
-  useEffect(() => {
-    if (!containerRef.current || viewMode !== 'canvas') return;
-
-    const term = searchWord.toLowerCase().trim();
-    let root = null;
-    
-    if (term) {
-      root = nodesData.find(n => n.label.toLowerCase().includes(term) || term.includes(n.label.toLowerCase()));
-    }
-
-    let displayNodes = nodesData;
-    let displayEdges = edgesData;
-
-    if (root) {
-      const connectedNodeIds = new Set([root.id]);
-      edgesData.forEach(e => {
-        if (e.from === root.id) connectedNodeIds.add(e.to);
-        if (e.to === root.id) connectedNodeIds.add(e.from);
-      });
-      displayNodes = nodesData.filter(n => connectedNodeIds.has(n.id) || n.label.toLowerCase().includes(term));
-      const visibleIds = new Set(displayNodes.map(n => n.id));
-      displayEdges = edgesData.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
-    }
-
-    // Vis.js Dataset: Clean Floating Word Pills
-    const visNodes = new DataSet(
-      displayNodes.map(n => {
-        const isRoot = root && n.id === root.id;
-        const isCollocation = n.category === 'collocation';
-        const isActive = n.category === 'active';
-        const isPassive = n.category === 'passive';
-
-        let textColor = '#60a5fa'; // Blue (Surface Crutch)
-        let bgColor = 'rgba(30, 58, 138, 0.35)';
-        let borderColor = '#60a5fa';
-        let fontSize = 14;
-
-        if (isRoot) {
-          textColor = '#ffffff';
-          bgColor = 'rgba(139, 92, 246, 0.7)'; // Purple Root
-          borderColor = '#c084fc';
-          fontSize = 17;
-        } else if (isActive) {
-          textColor = '#ffffff';
-          bgColor = 'rgba(16, 185, 129, 0.5)'; // Emerald Active
-          borderColor = '#10b981';
-          fontSize = 15;
-        } else if (isPassive) {
-          textColor = '#fed7aa';
-          bgColor = 'rgba(249, 115, 22, 0.4)'; // Amber Deep
-          borderColor = '#f97316';
-          fontSize = 14;
-        } else if (isCollocation) {
-          textColor = '#a5f3fc';
-          bgColor = 'rgba(6, 182, 212, 0.25)'; // Cyan Collocation
-          borderColor = '#22d3ee';
-          fontSize = 12;
-        }
-
-        return {
-          id: n.id,
-          label: isCollocation ? `"${n.label}"` : n.label,
-          shape: 'box',
-          margin: 10,
-          color: {
-            background: bgColor,
-            border: borderColor,
-            highlight: { background: 'rgba(217, 70, 239, 0.7)', border: '#d946ef' }
-          },
-          font: {
-            color: textColor,
-            face: 'Inter',
-            size: fontSize,
-            bold: isRoot || isActive
-          }
-        };
-      })
-    );
-
-    const visEdges = new DataSet(
-      displayEdges.map(e => ({
-        from: e.from,
-        to: e.to,
-        label: e.label || '',
-        color: { color: 'rgba(255, 255, 255, 0.25)', highlight: '#d946ef' },
-        font: { color: '#94a3b8', size: 11, strokeWidth: 3, strokeColor: '#090d16' }
-      }))
-    );
-
-    const options = {
-      nodes: { borderWidth: 1.5, shadow: true },
-      edges: { width: 1.5, smooth: { type: 'continuous' } },
-      physics: { barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 120 } },
-      interaction: { hover: true, zoomView: true, dragView: true }
-    };
-
-    networkRef.current = new Network(containerRef.current, { nodes: visNodes, edges: visEdges }, options);
-
-    if (root) setSelectedNode(root);
-
-    setTimeout(() => {
-      if (networkRef.current) {
-        networkRef.current.redraw();
-        networkRef.current.fit();
-      }
-    }, 150);
-
-    networkRef.current.on('selectNode', (params) => {
-      const clickedId = params.nodes[0];
-      const clicked = nodesData.find(n => n.id === clickedId);
-      if (clicked) {
-        setSelectedNode(clicked);
-        setEditLabel(clicked.label);
-        setEditDef(clicked.definition || '');
-        setEditCollocation(clicked.collocation || '');
-        setIsEditing(false);
-      }
-    });
-
-    networkRef.current.on('deselectNode', () => {
-      setSelectedNode(null);
-      setIsEditing(false);
-    });
-
-    return () => {
-      if (networkRef.current) networkRef.current.destroy();
-    };
-  }, [nodesData, edgesData, searchWord, viewMode]);
 
   // Quick Word Dump Handler
   const handleQuickDump = (e) => {
@@ -249,67 +113,76 @@ export default function SemanticGraphView() {
 
   const presetTerms = ['Boring', 'Big', 'Risky', 'Important', 'Happy', 'Delay'];
 
-  // Filtered nodes for grid view / canvas
-  const filteredNodes = nodesData.filter(n => !searchWord || n.label.toLowerCase().includes(searchWord.toLowerCase()));
+  // Filtered nodes
+  const term = searchWord.toLowerCase().trim();
+  let rootNode = null;
+  if (term) {
+    rootNode = nodesData.find(n => n.label.toLowerCase().includes(term) || term.includes(n.label.toLowerCase()));
+  }
+
+  let displayNodes = nodesData;
+  if (rootNode) {
+    const connectedIds = new Set([rootNode.id]);
+    edgesData.forEach(e => {
+      if (e.from === rootNode.id) connectedIds.add(e.to);
+      if (e.to === rootNode.id) connectedIds.add(e.from);
+    });
+    displayNodes = nodesData.filter(n => connectedIds.has(n.id) || n.label.toLowerCase().includes(term));
+  }
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh', background: 'radial-gradient(circle at 50% 50%, #0f172a 0%, #090d16 100%)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
-      {/* Minimal Top Bar (Search & Dump) */}
+      {/* Top Controls Bar */}
       <div style={{ padding: '0.75rem 1rem', background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', zIndex: 10, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {/* Quick Search */}
+          {/* Search */}
           <div style={{ position: 'relative', flex: 1 }}>
             <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              placeholder="Search word (e.g. Boring)..."
+              placeholder="Search word/concept (e.g. Boring)..."
               value={searchWord}
               onChange={(e) => setSearchWord(e.target.value)}
               style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.1rem', borderRadius: '20px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
             />
           </div>
 
-          {/* Quick Dump Input */}
+          {/* Quick Dump */}
           <form onSubmit={handleQuickDump} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <input
               type="text"
               placeholder="Dump word..."
               value={quickDumpInput}
               onChange={(e) => setQuickDumpInput(e.target.value)}
-              style={{ width: '100px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
+              style={{ width: '110px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
             />
-            <button type="submit" className="btn btn-primary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Dump Word to Graph">
+            <button type="submit" className="btn btn-primary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Dump Word">
               <Zap size={16} />
             </button>
           </form>
 
-          {/* View Mode Toggle */}
-          <button onClick={() => setViewMode(viewMode === 'canvas' ? 'grid' : 'canvas')} className="btn btn-secondary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Toggle View Mode">
-            {viewMode === 'canvas' ? <Grid size={16} /> : <GitFork size={16} />}
-          </button>
-
           {/* Backup Button */}
-          <button onClick={() => setShowSyncModal(true)} className="btn btn-secondary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Backup & Restore">
+          <button onClick={() => setShowSyncModal(true)} className="btn btn-secondary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Backup">
             <Download size={16} />
           </button>
         </div>
 
-        {/* Quick Concept Chips */}
+        {/* Concept Chips */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', overflowX: 'auto' }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, whitespace: 'nowrap' }}>Concepts:</span>
           <button onClick={() => setSearchWord('')} className={`btn ${!searchWord ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px' }}>
-            All ({nodesData.length})
+            All Words ({nodesData.length})
           </button>
-          {presetTerms.map(term => (
+          {presetTerms.map(t => (
             <button
-              key={term}
-              onClick={() => setSearchWord(term)}
-              className={`btn ${searchWord.toLowerCase() === term.toLowerCase() ? 'btn-primary' : 'btn-secondary'}`}
+              key={t}
+              onClick={() => setSearchWord(t)}
+              className={`btn ${searchWord.toLowerCase() === t.toLowerCase() ? 'btn-primary' : 'btn-secondary'}`}
               style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px' }}
             >
-              {term}
+              {t}
             </button>
           ))}
           <button onClick={handleResetDefaults} className="btn btn-secondary" style={{ padding: '0.15rem 0.5rem', minHeight: '26px', fontSize: '0.72rem', borderRadius: '12px', color: 'var(--accent-amber)' }}>
@@ -319,56 +192,87 @@ export default function SemanticGraphView() {
 
       </div>
 
-      {/* Main Content View (Canvas or Grid Cards) */}
-      <div style={{ flex: 1, width: '100%', height: '100%', position: 'relative', overflowY: viewMode === 'grid' ? 'auto' : 'hidden' }}>
-        
-        {viewMode === 'canvas' ? (
-          <>
-            <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
-            
-            {/* Legend */}
-            <div style={{ position: 'absolute', bottom: selectedNode ? '220px' : '16px', left: '16px', transition: 'bottom 0.3s ease', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', gap: '0.65rem', fontSize: '0.72rem' }}>
-              <span style={{ color: '#c084fc', fontWeight: 600 }}>🟣 Concept Root</span>
-              <span style={{ color: '#f97316', fontWeight: 600 }}>🟠 Deep Lexicon</span>
-              <span style={{ color: '#10b981', fontWeight: 600 }}>🟢 Active Spoken</span>
-              <span style={{ color: '#22d3ee', fontWeight: 600 }}>🌿 Collocation</span>
-            </div>
-          </>
-        ) : (
-          /* Grid Card Matrix View */
-          <div style={{ padding: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', paddingBottom: '240px' }}>
-            {filteredNodes.map(n => (
-              <div
-                key={n.id}
-                onClick={() => { setSelectedNode(n); setEditLabel(n.label); setEditDef(n.definition || ''); setEditCollocation(n.collocation || ''); }}
-                className="glass-card"
-                style={{
-                  cursor: 'pointer',
-                  borderColor: selectedNode?.id === n.id ? 'var(--accent-purple)' : (n.category === 'active' ? '#10b981' : (n.category === 'passive' ? '#f97316' : '#3b82f6')),
-                  background: selectedNode?.id === n.id ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                  padding: '0.85rem'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                  <h4 style={{ fontSize: '0.95rem', color: '#ffffff', margin: 0 }}>{n.label}</h4>
-                  <span className={`badge ${n.category === 'active' ? 'badge-emerald' : 'badge-amber'}`} style={{ fontSize: '0.6rem' }}>
-                    {n.category}
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0' }}>{n.definition || 'Deep lexicon word'}</p>
-                {n.collocation && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', fontWeight: 600, margin: '0.2rem 0' }}>
-                    "{n.collocation}"
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+      {/* FLOATING WORD 2D SPATIAL CANVAS */}
+      <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', gap: '1rem', paddingBottom: selectedNode ? '240px' : '60px' }}>
+        {displayNodes.map(n => {
+          const isRoot = rootNode && n.id === rootNode.id;
+          const isActive = n.category === 'active';
+          const isPassive = n.category === 'passive';
+          const isCollocation = n.category === 'collocation';
+          const isSelected = selectedNode?.id === n.id;
 
+          let badgeColor = 'rgba(96, 165, 250, 0.2)';
+          let borderColor = '#60a5fa';
+          let textColor = '#60a5fa';
+          let fontSize = '0.9rem';
+          let fontWeight = '500';
+
+          if (isRoot) {
+            badgeColor = 'rgba(139, 92, 246, 0.35)';
+            borderColor = '#c084fc';
+            textColor = '#ffffff';
+            fontSize = '1.15rem';
+            fontWeight = '700';
+          } else if (isActive) {
+            badgeColor = 'rgba(16, 185, 129, 0.25)';
+            borderColor = '#10b981';
+            textColor = '#ffffff';
+            fontSize = '1rem';
+            fontWeight = '700';
+          } else if (isPassive) {
+            badgeColor = 'rgba(249, 115, 22, 0.25)';
+            borderColor = '#f97316';
+            textColor = '#fed7aa';
+            fontSize = '0.92rem';
+            fontWeight = '600';
+          } else if (isCollocation) {
+            badgeColor = 'rgba(6, 182, 212, 0.15)';
+            borderColor = '#22d3ee';
+            textColor = '#a5f3fc';
+            fontSize = '0.82rem';
+            fontWeight = '500';
+          }
+
+          return (
+            <div
+              key={n.id}
+              onClick={() => { setSelectedNode(n); setEditLabel(n.label); setEditDef(n.definition || ''); setEditCollocation(n.collocation || ''); }}
+              style={{
+                cursor: 'pointer',
+                padding: isRoot ? '0.65rem 1.25rem' : '0.45rem 0.9rem',
+                borderRadius: '25px',
+                background: isSelected ? 'rgba(217, 70, 239, 0.3)' : badgeColor,
+                border: `1.5px solid ${isSelected ? '#d946ef' : borderColor}`,
+                color: textColor,
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                boxShadow: isRoot || isSelected ? `0 0 20px ${borderColor}` : '0 4px 12px rgba(0, 0, 0, 0.3)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                backdropFilter: 'blur(8px)',
+                transform: isSelected ? 'scale(1.08)' : 'scale(1)'
+              }}
+            >
+              <span>{isCollocation ? `"${n.label}"` : n.label}</span>
+              <span style={{ fontSize: '0.65rem', opacity: 0.7, textTransform: 'uppercase', padding: '0.1rem 0.35rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)' }}>
+                {n.category}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Bottom Drawer Inspector */}
+      {/* Floating Legend */}
+      <div style={{ position: 'fixed', bottom: selectedNode ? '220px' : '16px', left: '16px', transition: 'bottom 0.3s ease', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '0.4rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', gap: '0.65rem', fontSize: '0.72rem', zIndex: 50 }}>
+        <span style={{ color: '#c084fc', fontWeight: 600 }}>🟣 Concept Root</span>
+        <span style={{ color: '#f97316', fontWeight: 600 }}>🟠 Deep Lexicon</span>
+        <span style={{ color: '#10b981', fontWeight: 600 }}>🟢 Active Spoken</span>
+        <span style={{ color: '#22d3ee', fontWeight: 600 }}>🌿 Collocation</span>
+      </div>
+
+      {/* Bottom Inspector Drawer */}
       {selectedNode && (
         <div className="glass-panel animate-fade-in" style={{
           position: 'fixed',
@@ -439,7 +343,7 @@ export default function SemanticGraphView() {
         </div>
       )}
 
-      {/* Backup / Sync Modal */}
+      {/* Backup Modal */}
       {showSyncModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '440px', padding: '1.25rem' }}>
