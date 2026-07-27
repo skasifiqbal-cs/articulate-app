@@ -1,126 +1,60 @@
 export const INITIAL_VOCABULARY_NODES = [
-  // Anchors (Basic words user already knows)
-  { id: 'anchor_1', label: 'Big / Large', category: 'anchor', usageCount: 42, color: '#3b82f6' },
-  { id: 'anchor_2', label: 'Boring / Slow', category: 'anchor', usageCount: 35, color: '#3b82f6' },
-  { id: 'anchor_3', label: 'Bad / Dangerous', category: 'anchor', usageCount: 28, color: '#3b82f6' },
-  { id: 'anchor_4', label: 'Important / Key', category: 'anchor', usageCount: 50, color: '#3b82f6' },
-  { id: 'anchor_5', label: 'Happy / Relieved', category: 'anchor', usageCount: 19, color: '#3b82f6' },
-  { id: 'anchor_6', label: 'Problem / Delay', category: 'anchor', usageCount: 30, color: '#3b82f6' },
+  // Cluster 1: Difficulty & Effort (Anchor)
+  { id: 'anchor_hard', label: 'Hard / Difficult', category: 'anchor', usageCount: 42, color: '#c084fc' },
+  { id: 'deep_arduous', label: 'Arduous', category: 'passive', usageCount: 2, definition: 'Involving or requiring strenuous effort; difficult and tiring.', collocation: 'an arduous journey / arduous task', color: '#f97316' },
+  { id: 'deep_formidable', label: 'Formidable', category: 'passive', usageCount: 3, definition: 'Inspiring fear or respect through being impressively large, powerful, intense, or capable.', collocation: 'a formidable opponent / formidable challenge', color: '#f97316' },
+  { id: 'deep_onerous', label: 'Onerous', category: 'passive', usageCount: 1, definition: 'Involving an amount of effort and difficulty that is oppressively burdensome.', collocation: 'onerous duties / onerous taxes', color: '#f97316' },
+  { id: 'active_uphill', label: 'Uphill battle', category: 'active', usageCount: 14, definition: 'A very difficult struggle.', collocation: 'facing an uphill battle', color: '#10b981' },
 
-  // Passive Deep Lexicon Words (Sitting in user's mind, target for activation)
-  { id: 'deep_1', label: 'Colossal', category: 'passive', usageCount: 2, definition: 'Extremely large or immense in scale.', collocation: 'a colossal mistake / colossal scale', color: '#f97316' },
-  { id: 'deep_2', label: 'Tedious', category: 'passive', usageCount: 1, definition: 'Too long, slow, or dull; tiresome or monotonous.', collocation: 'a tedious task / tedious process', color: '#f97316' },
-  { id: 'deep_3', label: 'Precarious', category: 'passive', usageCount: 3, definition: 'Not securely held or in position; dangerously likely to fall.', collocation: 'a precarious position / precarious balance', color: '#f97316' },
-  { id: 'deep_4', label: 'Paramount', category: 'passive', usageCount: 4, definition: 'More important than anything else; supreme.', collocation: 'of paramount importance', color: '#f97316' },
-  { id: 'deep_5', label: 'Nostalgic', category: 'passive', usageCount: 2, definition: 'A feeling of pleasure and slight sadness when thinking about the past.', collocation: 'a nostalgic feeling / wave of nostalgia', color: '#f97316' },
-  { id: 'deep_6', label: 'Immaculate', category: 'passive', usageCount: 0, definition: 'Perfectly clean, neat, or tidy; free from flaws.', collocation: 'immaculate record / immaculate timing', color: '#f97316' },
-  { id: 'deep_7', label: 'Spinning our wheels', category: 'passive', usageCount: 1, definition: 'Wasting energy and time without making progress.', collocation: 'spinning our wheels in committee', color: '#f97316' },
-  { id: 'deep_8', label: 'Deplorable', category: 'passive', usageCount: 0, definition: 'Deserving strong condemnation; shockingly bad.', collocation: 'deplorable conditions / deplorable choice', color: '#f97316' },
-  { id: 'deep_9', label: 'Fastidious', category: 'passive', usageCount: 1, definition: 'Very attentive to and concerned about accuracy and detail.', collocation: 'fastidious attention to detail', color: '#f97316' },
-  { id: 'deep_10', label: 'Wistful', category: 'passive', usageCount: 0, definition: 'Having or showing a feeling of vague or regretful longing.', collocation: 'a wistful gaze / wistful smile', color: '#f97316' },
+  // Cluster 2: Communication & Speech (Anchor)
+  { id: 'anchor_speak', label: 'Speak / Talk', category: 'anchor', usageCount: 50, color: '#c084fc' },
+  { id: 'deep_articulate', label: 'Articulate', category: 'passive', usageCount: 4, definition: 'Having or showing the ability to speak fluently and coherently.', collocation: 'an articulate speaker / articulate your thoughts', color: '#f97316' },
+  { id: 'deep_eloquence', label: 'Eloquence', category: 'passive', usageCount: 2, definition: 'Fluent or persuasive speaking or writing.', collocation: 'speak with eloquence', color: '#f97316' },
+  { id: 'deep_rhetoric', label: 'Rhetoric', category: 'passive', usageCount: 1, definition: 'The art of effective or persuasive speaking or writing.', collocation: 'empty rhetoric / brilliant rhetoric', color: '#f97316' },
+  { id: 'active_mince', label: 'Mince words', category: 'active', usageCount: 11, definition: 'To speak indirectly and with careful deliberation.', collocation: 'not one to mince words', color: '#10b981' },
 
-  // Active Words (Successfully activated into user's speech)
-  { id: 'active_1', label: 'Impassioned', category: 'active', usageCount: 14, definition: 'Filled with or showing great emotion or passion.', collocation: 'an impassioned plea', color: '#10b981' },
-  { id: 'active_2', label: 'Setback', category: 'active', usageCount: 18, definition: 'A reversal or check in progress.', collocation: 'a minor setback / temporary setback', color: '#10b981' },
-  { id: 'active_3', label: 'Belaboring', category: 'active', usageCount: 11, definition: 'Discussing or emphasizing something in excessive detail.', collocation: 'without belaboring the point', color: '#10b981' },
-  { id: 'active_4', label: 'Ambiguity', category: 'active', usageCount: 15, definition: 'The quality of being open to more than one interpretation.', collocation: 'resolve ambiguity / eliminate ambiguity', color: '#10b981' }
+  // Cluster 3: Sadness & Reflection (Anchor)
+  { id: 'anchor_sad', label: 'Sad / Past', category: 'anchor', usageCount: 30, color: '#c084fc' },
+  { id: 'deep_melancholy', label: 'Melancholy', category: 'passive', usageCount: 2, definition: 'A feeling of pensive sadness, typically with no obvious cause.', collocation: 'a melancholy mood / air of melancholy', color: '#f97316' },
+  { id: 'deep_despondent', label: 'Despondent', category: 'passive', usageCount: 0, definition: 'In low spirits from loss of hope or courage.', collocation: 'growing despondent', color: '#f97316' },
+  { id: 'deep_wistful', label: 'Wistful', category: 'passive', usageCount: 0, definition: 'Having or showing a feeling of vague or regretful longing.', collocation: 'a wistful smile / wistful glance', color: '#f97316' },
+  { id: 'deep_nostalgic', label: 'Nostalgic', category: 'passive', usageCount: 5, definition: 'A sentimental longing or wistful affection for the past.', collocation: 'feeling nostalgic', color: '#f97316' },
+
+  // Cluster 4: Important & Essential (Anchor)
+  { id: 'anchor_important', label: 'Important / Key', category: 'anchor', usageCount: 40, color: '#c084fc' },
+  { id: 'deep_paramount', label: 'Paramount', category: 'passive', usageCount: 4, definition: 'More important than anything else; supreme.', collocation: 'of paramount importance', color: '#f97316' },
+  { id: 'deep_imperative', label: 'Imperative', category: 'passive', usageCount: 3, definition: 'Of vital importance; crucial.', collocation: 'it is imperative that', color: '#f97316' },
+  { id: 'deep_indispensable', label: 'Indispensable', category: 'passive', usageCount: 2, definition: 'Absolutely necessary.', collocation: 'an indispensable tool', color: '#f97316' },
+  { id: 'active_crucial', label: 'Crucial', category: 'active', usageCount: 18, definition: 'Decisive or critical, especially in the success or failure of something.', collocation: 'a crucial decision', color: '#10b981' }
 ];
 
 export const INITIAL_VOCABULARY_EDGES = [
-  { from: 'anchor_1', to: 'deep_1', label: 'upgrade' },
-  { from: 'anchor_2', to: 'deep_2', label: 'upgrade' },
-  { from: 'anchor_2', to: 'deep_7', label: 'idiom' },
-  { from: 'anchor_3', to: 'deep_3', label: 'upgrade' },
-  { from: 'anchor_3', to: 'deep_8', label: 'upgrade' },
-  { from: 'anchor_4', to: 'deep_4', label: 'upgrade' },
-  { from: 'anchor_5', to: 'deep_5', label: 'nuance' },
-  { from: 'anchor_5', to: 'deep_10', label: 'nuance' },
-  { from: 'anchor_6', to: 'active_2', label: 'synonym' },
-  { from: 'anchor_2', to: 'active_3', label: 'idiom' },
-  { from: 'deep_9', to: 'deep_6', label: 'related' }
-];
+  // Cluster 1 Edges
+  { from: 'anchor_hard', to: 'deep_arduous', label: 'upgrade' },
+  { from: 'anchor_hard', to: 'deep_formidable', label: 'upgrade' },
+  { from: 'anchor_hard', to: 'deep_onerous', label: 'upgrade' },
+  { from: 'anchor_hard', to: 'active_uphill', label: 'idiom' },
+  { from: 'deep_arduous', to: 'deep_onerous', label: 'synonym' },
 
-export const SCENARIOS = [
-  {
-    id: 's1',
-    title: 'Project Delay Explanation',
-    category: 'Work & Professional',
-    prompt: 'You are explaining to a senior stakeholder why a key project deliverable has been delayed by two weeks, without sounding defensive.',
-    suggestedCues: ['setback', 'precarious', 'spinning our wheels', 'paramount']
-  },
-  {
-    id: 's2',
-    title: 'Debating a Strategic Direction',
-    category: 'Debate & Persuasion',
-    prompt: 'A colleague proposes a risky shortcut to save budget. Explain politely why this proposal could be dangerous and counterproductive in the long run.',
-    suggestedCues: ['precarious', 'deplorable', 'belaboring', 'fastidious']
-  },
-  {
-    id: 's3',
-    title: 'Describing a Childhood Memory',
-    category: 'Personal & Reflective',
-    prompt: 'Describe an old rainy afternoon from your school days when you sat near the window thinking about your future.',
-    suggestedCues: ['wistful', 'nostalgic', 'immaculate', 'colossal']
-  },
-  {
-    id: 's4',
-    title: 'Giving Critical Product Feedback',
-    category: 'Technical & Design',
-    prompt: 'Review a software tool that has great potential but suffers from slow load times and confusing user workflows.',
-    suggestedCues: ['tedious', 'ambiguity', 'fastidious', 'setback']
-  }
-];
+  // Cluster 2 Edges
+  { from: 'anchor_speak', to: 'deep_articulate', label: 'upgrade' },
+  { from: 'anchor_speak', to: 'deep_eloquence', label: 'upgrade' },
+  { from: 'anchor_speak', to: 'deep_rhetoric', label: 'upgrade' },
+  { from: 'anchor_speak', to: 'active_mince', label: 'idiom' },
+  { from: 'deep_articulate', to: 'deep_eloquence', label: 'related' },
 
-export const TABOO_CARDS = [
-  {
-    id: 't1',
-    targetWord: 'PRECARIOUS',
-    forbiddenWords: ['DANGEROUS', 'RISKY', 'SAFE', 'FALL', 'UNSTABLE'],
-    definition: 'Not securely held or positioned; dangerously uncertain.'
-  },
-  {
-    id: 't2',
-    targetWord: 'TEDIOUS',
-    forbiddenWords: ['BORING', 'SLOW', 'DULL', 'LONG', 'TIRED'],
-    definition: 'Monotonous, repetitive, or dull work or task.'
-  },
-  {
-    id: 't3',
-    targetWord: 'PARAMOUNT',
-    forbiddenWords: ['IMPORTANT', 'KEY', 'MAIN', 'FIRST', 'BIG'],
-    definition: 'More important than anything else; supreme authority or status.'
-  },
-  {
-    id: 't4',
-    targetWord: 'FASTIDIOUS',
-    forbiddenWords: ['PICKY', 'CLEAN', 'DETAIL', 'NEAT', 'PERFECT'],
-    definition: 'Very attentive to and concerned about accuracy and detail.'
-  },
-  {
-    id: 't5',
-    targetWord: 'WISTFUL',
-    forbiddenWords: ['SAD', 'HAPPY', 'PAST', 'MISS', 'MEMORY'],
-    definition: 'Feeling a vague or regretful longing for something in the past.'
-  }
-];
+  // Cluster 3 Edges
+  { from: 'anchor_sad', to: 'deep_melancholy', label: 'upgrade' },
+  { from: 'anchor_sad', to: 'deep_despondent', label: 'upgrade' },
+  { from: 'anchor_sad', to: 'deep_wistful', label: 'nuance' },
+  { from: 'anchor_sad', to: 'deep_nostalgic', label: 'nuance' },
+  { from: 'deep_wistful', to: 'deep_nostalgic', label: 'related' },
+  { from: 'deep_melancholy', to: 'deep_despondent', label: 'intensity' },
 
-export const SHADOWING_QUOTES = [
-  {
-    id: 'q1',
-    quote: 'Eloquence is not the mere display of rare vocabulary, but the art of conveying complex truths with effortless precision.',
-    speaker: 'Native Eloquence Master',
-    difficulty: 'Intermediate'
-  },
-  {
-    id: 'q2',
-    quote: 'Instead of spinning our wheels in endless debate, we ought to focus our attention on the paramount objective before us.',
-    speaker: 'Executive Leadership',
-    difficulty: 'Advanced'
-  },
-  {
-    id: 'q3',
-    quote: 'Her fastidious attention to detail ensured that even under precarious circumstances, the execution remained immaculate.',
-    speaker: 'Literary Prose',
-    difficulty: 'Mastery'
-  }
+  // Cluster 4 Edges
+  { from: 'anchor_important', to: 'deep_paramount', label: 'upgrade' },
+  { from: 'anchor_important', to: 'deep_imperative', label: 'upgrade' },
+  { from: 'anchor_important', to: 'deep_indispensable', label: 'upgrade' },
+  { from: 'anchor_important', to: 'active_crucial', label: 'synonym' },
+  { from: 'deep_imperative', to: 'active_crucial', label: 'synonym' }
 ];
