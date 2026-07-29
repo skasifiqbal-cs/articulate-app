@@ -115,3 +115,36 @@ export const importBackupData = (jsonString) => {
     return false;
   }
 };
+
+export const getDailyRevisionWords = () => {
+  const today = new Date().toISOString().split('T')[0];
+  const storedStr = localStorage.getItem('articulate_daily_revision');
+  let stored = null;
+  
+  try {
+    if (storedStr) stored = JSON.parse(storedStr);
+  } catch (err) {}
+
+  if (stored && stored.date === today && Array.isArray(stored.words)) {
+    // Ensure the words still exist
+    const nodes = getNodes();
+    const nodeMap = new Set(nodes.map(n => n.id));
+    if (stored.words.every(id => nodeMap.has(id))) {
+      return stored.words;
+    }
+  }
+
+  // Generate 5 new random words (excluding anchors)
+  const nodes = getNodes();
+  const eligibleNodes = nodes.filter(n => n.category !== 'anchor');
+  
+  // Shuffle array
+  for (let i = eligibleNodes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [eligibleNodes[i], eligibleNodes[j]] = [eligibleNodes[j], eligibleNodes[i]];
+  }
+  
+  const selected = eligibleNodes.slice(0, 5).map(n => n.id);
+  localStorage.setItem('articulate_daily_revision', JSON.stringify({ date: today, words: selected }));
+  return selected;
+};

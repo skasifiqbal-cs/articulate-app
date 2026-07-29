@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
-import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Download, Upload, Clock, Network as NetworkIcon } from 'lucide-react';
-import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph, exportBackupData, importBackupData } from '../services/storage.js';
+import { Search, Zap, Trash2, Edit3, CheckCircle2, RotateCcw, Save, Download, Upload, Clock, Network as NetworkIcon, BookOpen } from 'lucide-react';
+import { getNodes, getEdges, addNodeToGraph, updateNodeCategory, deleteNodeFromGraph, editNodeInGraph, exportBackupData, importBackupData, getDailyRevisionWords } from '../services/storage.js';
 
 export default function SemanticGraphView() {
   const containerRef = useRef(null);
@@ -29,6 +29,13 @@ export default function SemanticGraphView() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [backupText, setBackupText] = useState('');
   const [syncNotice, setSyncNotice] = useState('');
+
+  // Daily Revision State
+  const [revisionNodeIds, setRevisionNodeIds] = useState([]);
+
+  useEffect(() => {
+    setRevisionNodeIds(getDailyRevisionWords());
+  }, []);
 
   // Graph Rendering Effect
   useEffect(() => {
@@ -334,6 +341,12 @@ export default function SemanticGraphView() {
           >
             <Clock size={14} /> History
           </button>
+          <button 
+            onClick={() => setActiveTab('revision')}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0.4rem 0.75rem', borderRadius: '18px', background: activeTab === 'revision' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeTab === 'revision' ? '#fff' : 'var(--text-muted)', border: 'none', fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s' }}
+          >
+            <BookOpen size={14} /> Revision
+          </button>
         </div>
 
         {/* Backup Button */}
@@ -383,6 +396,58 @@ export default function SemanticGraphView() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* DAILY REVISION TAB */}
+        <div style={{ display: activeTab === 'revision' ? 'flex' : 'none', flexDirection: 'column', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto', padding: '2rem 1.5rem', alignItems: 'center' }}>
+          <div style={{ width: '100%', maxWidth: '600px' }}>
+            <h2 style={{ color: '#fff', fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 600 }}>Daily Revision</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>These 5 words are randomly selected from your graph for today's practice.</p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {revisionNodeIds.map(id => {
+                const node = nodesData.find(n => n.id === id);
+                if (!node) return null;
+                
+                // Find what it connects to
+                const connectedEdges = edgesData.filter(e => e.from === id || e.to === id);
+                const connectedNodeIds = new Set(connectedEdges.map(e => e.from === id ? e.to : e.from));
+                const connectedAnchors = nodesData.filter(n => connectedNodeIds.has(n.id) && n.category === 'anchor');
+
+                return (
+                  <div key={node.id} style={{ display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.04)', padding: '1.25rem', borderRadius: '12px', borderLeft: `4px solid ${node.category === 'active' ? '#10b981' : '#f97316'}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                      <span className={`badge ${node.category === 'active' ? 'badge-emerald' : 'badge-amber'}`} style={{ fontSize: '0.65rem' }}>
+                        {node.category.toUpperCase()}
+                      </span>
+                      <h3 style={{ color: '#fff', margin: 0, fontSize: '1.2rem' }}>{node.label}</h3>
+                    </div>
+                    
+                    <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.75rem 0', fontSize: '0.9rem', lineHeight: 1.4 }}>
+                      {node.definition || 'No definition set.'}
+                    </p>
+
+                    {node.collocation && (
+                      <p style={{ color: 'var(--accent-cyan)', margin: '0 0 0.5rem 0', fontSize: '0.85rem', fontWeight: 600 }}>
+                        Pairing: "{node.collocation}"
+                      </p>
+                    )}
+
+                    {connectedAnchors.length > 0 && (
+                      <div style={{ marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginRight: '0.5rem' }}>Associated with:</span>
+                        {connectedAnchors.map(a => (
+                          <span key={a.id} style={{ fontSize: '0.75rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.1)', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>
+                            {a.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
