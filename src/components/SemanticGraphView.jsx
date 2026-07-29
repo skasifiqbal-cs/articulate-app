@@ -17,6 +17,7 @@ export default function SemanticGraphView() {
   
   // View Toggle State
   const [activeTab, setActiveTab] = useState('graph'); // 'graph' or 'history'
+  const [viewFilter, setViewFilter] = useState('all'); // 'all', 'active', 'passive'
 
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
@@ -44,16 +45,35 @@ export default function SemanticGraphView() {
     let displayNodes = nodesData;
     let displayEdges = edgesData;
 
+    // 1. View Filter (All, Active, Passive)
+    if (viewFilter !== 'all') {
+      // Keep anchors visible so edges have something to attach to, plus the filtered category
+      displayNodes = displayNodes.filter(n => n.category === viewFilter || n.category === 'anchor');
+    }
+
+    // 2. Search Filter
     if (root) {
       const connectedNodeIds = new Set([root.id]);
       edgesData.forEach(e => {
         if (e.from === root.id) connectedNodeIds.add(e.to);
         if (e.to === root.id) connectedNodeIds.add(e.from);
       });
-      displayNodes = nodesData.filter(n => connectedNodeIds.has(n.id) || n.label.toLowerCase().includes(term));
-      const visibleIds = new Set(displayNodes.map(n => n.id));
-      displayEdges = edgesData.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+      displayNodes = displayNodes.filter(n => connectedNodeIds.has(n.id) || n.label.toLowerCase().includes(term));
     }
+
+    // 3. Selection Focus Mode (Only show connections to selected node)
+    if (selectedNode) {
+      const connectedNodeIds = new Set([selectedNode.id]);
+      edgesData.forEach(e => {
+        if (e.from === selectedNode.id) connectedNodeIds.add(e.to);
+        if (e.to === selectedNode.id) connectedNodeIds.add(e.from);
+      });
+      displayNodes = displayNodes.filter(n => connectedNodeIds.has(n.id));
+    }
+
+    // 4. Ensure edges only render between visible nodes
+    const visibleIds = new Set(displayNodes.map(n => n.id));
+    displayEdges = edgesData.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
 
     const visNodes = new DataSet(
       displayNodes.map(n => {
@@ -161,7 +181,7 @@ export default function SemanticGraphView() {
         networkRef.current.destroy();
       }
     };
-  }, [nodesData, edgesData, searchWord, selectedNode, activeTab]);
+  }, [nodesData, edgesData, searchWord, selectedNode, activeTab, viewFilter]);
 
   // Quick Word Dump Handler
   const handleQuickDump = (e) => {
@@ -264,25 +284,36 @@ export default function SemanticGraphView() {
       <div style={{ padding: '0.75rem 1rem', background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
         
         {/* Search */}
-        <div style={{ position: 'relative', flex: 1, minWidth: '180px', maxWidth: '300px' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '130px', maxWidth: '240px' }}>
           <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
           <input
             type="text"
-            placeholder="Search word..."
+            placeholder="Search..."
             value={searchWord}
             onChange={(e) => setSearchWord(e.target.value)}
             style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.1rem', borderRadius: '20px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
           />
         </div>
 
+        {/* View Filter */}
+        <select 
+          value={viewFilter} 
+          onChange={(e) => setViewFilter(e.target.value)}
+          style={{ padding: '0.45rem 0.5rem', borderRadius: '20px', background: 'rgba(15, 23, 42, 0.8)', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.1)', fontSize: '0.8rem', outline: 'none', cursor: 'pointer' }}
+        >
+          <option value="all">All Words</option>
+          <option value="active">Active Only</option>
+          <option value="passive">Passive Only</option>
+        </select>
+
         {/* Quick Dump */}
         <form onSubmit={handleQuickDump} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
           <input
             type="text"
-            placeholder="Dump word..."
+            placeholder="Dump..."
             value={quickDumpInput}
             onChange={(e) => setQuickDumpInput(e.target.value)}
-            style={{ width: '100px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
+            style={{ width: '85px', padding: '0.5rem 0.65rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
           />
           <button type="submit" className="btn btn-primary" style={{ borderRadius: '50%', width: '34px', height: '34px', padding: 0 }} title="Dump Word">
             <Zap size={16} />
